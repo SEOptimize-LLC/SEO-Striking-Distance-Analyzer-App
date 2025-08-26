@@ -6,10 +6,17 @@ from typing import Dict, List, Optional, Tuple, Set
 import re
 from datetime import datetime
 import io
-import requests
-import json
 import time
-from bs4 import BeautifulSoup
+
+# Lazy imports - only load when needed
+def lazy_import_requests():
+    import requests
+    import json
+    return requests, json
+
+def lazy_import_beautifulsoup():
+    from bs4 import BeautifulSoup
+    return BeautifulSoup
 
 # Page configuration
 st.set_page_config(
@@ -18,7 +25,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for better UI
+# Full CSS with performance optimization
 st.markdown("""
 <style>
     .main { padding-top: 1rem; }
@@ -29,12 +36,12 @@ st.markdown("""
         border-radius: 8px;
     }
     .stButton>button:hover { background-color: #1E5A7A; }
-    .branded-terms-box {
-        background-color: #f8f9fa;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
+    .metric-card {
+        background: white;
         padding: 1rem;
-        margin: 1rem 0;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .success-box {
         padding: 1rem;
@@ -50,62 +57,91 @@ st.markdown("""
         border-left: 4px solid #FF9800;
         margin: 1rem 0;
     }
+    .branded-terms-box {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 class DataforSEOClient:
-    """Client for DataforSEO API integration"""
+    """Client for DataforSEO API integration using the correct clickstream endpoint"""
 
     def __init__(self, username: str = None, password: str = None):
         self.username = username
         self.password = password
-        self.base_url = "https://api.dataforseo.com/v3/keywords/google/keyword_info/live"
+        self.base_url = "https://api.dataforseo.com/v3/keywords_data/clickstream_data/dataforseo_search_volume/live"
 
-    def get_search_volumes(self, keywords: List[str], location_code: int = 2840) -> Dict[str, int]:
+    def get_search_volumes(self, keywords: List[str], location_code: int = 2840, language_code: str = "en") -> Dict[str, int]:
         """
         Get search volumes for keywords using DataforSEO API
         Batches up to 1000 keywords per request for cost efficiency
         """
         if not self.username or not self.password:
+            st.warning("DataforSEO credentials not provided")
             return {}
+
+        # Lazy load requests and json
+        requests, json = lazy_import_requests()
 
         volumes = {}
 
-        # Process in batches of 1000
+        # Process in batches of 1000 (API limit for cost efficiency)
         for i in range(0, len(keywords), 1000):
             batch = keywords[i:i+1000]
 
             try:
-                # Prepare request data
+                # Prepare request data according to API documentation
                 post_data = [{
                     "keywords": batch,
                     "location_code": location_code,
-                    "language_code": "en"
+                    "language_code": language_code,
+                    "use_clickstream": True  # Use clickstream data for better accuracy
                 }]
 
                 # Make API request
                 response = requests.post(
                     self.base_url,
                     auth=(self.username, self.password),
-                    headers={'Content-Type': 'application/json'},
-                    data=json.dumps(post_data)
+                    headers={
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    data=json.dumps(post_data),
+                    timeout=30
                 )
 
                 if response.status_code == 200:
                     data = response.json()
-                    if data.get('status_code') == 20000:
-                        results = data['tasks'][0]['result']
-                        for result in results:
-                            keyword = result['keyword']
-                            volume = result.get('search_volume', 0)
-                            volumes[keyword] = volume
 
-                    # Rate limiting - wait between batches
-                    if i + 1000 < len(keywords):
-                        time.sleep(1)
+                    # Check if request was successful
+                    if data.get('status_code') == 20000 and data.get('tasks'):
+                        task = data['tasks'][0]
+
+                        if task.get('status_code') == 20000 and task.get('result'):
+                            result = task['result'][0]
+
+                            # Extract search volumes from items
+                            for item in result.get('items', []):
+                                keyword = item.get('keyword', '')
+                                search_volume = item.get('search_volume', 0)
+                                volumes[keyword] = search_volume
+                        else:
+                            st.warning(f"API Task failed: {task.get('status_message', 'Unknown error')}")
+                    else:
+                        st.warning(f"API request failed: {data.get('status_message', 'Unknown error')}")
+                else:
+                    st.warning(f"HTTP error {response.status_code}: {response.text}")
+
+                # Rate limiting - wait between batches
+                if i + 1000 < len(keywords):
+                    time.sleep(1)
 
             except Exception as e:
-                st.warning(f"Error fetching search volumes for batch {i//1000 + 1}: {str(e)}")
+                st.warning(f"Error processing batch {i//1000 + 1}: {str(e)}")
                 continue
 
         return volumes
@@ -114,17 +150,28 @@ class ContentExtractor:
     """Extract main content from URLs excluding navigation, footer, etc."""
 
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        # Lazy initialization
+        self.session = None
+
+    def _get_session(self):
+        """Initialize session only when needed"""
+        if self.session is None:
+            requests, _ = lazy_import_requests()
+            self.session = requests.Session()
+            self.session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+        return self.session
 
     def extract_main_content(self, url: str) -> str:
         """
         Extract main content from URL, excluding navigation, footer, sidebar
         """
         try:
-            response = self.session.get(url, timeout=10)
+            session = self._get_session()
+            BeautifulSoup = lazy_import_beautifulsoup()
+
+            response = session.get(url, timeout=10)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -182,7 +229,13 @@ class DataProcessor:
         self.html_data = None
         self.content_data = {}
         self.column_mappings = {}
-        self.content_extractor = ContentExtractor()
+        self.content_extractor = None
+
+    def _get_content_extractor(self):
+        """Lazy load content extractor"""
+        if self.content_extractor is None:
+            self.content_extractor = ContentExtractor()
+        return self.content_extractor
 
     def detect_columns(self, df: pd.DataFrame, expected_columns: Dict[str, List[str]]) -> Dict[str, str]:
         """Auto-detect column mappings based on common variations"""
@@ -225,9 +278,9 @@ class DataProcessor:
     def process_gsc_data(self, file, branded_terms: str = "") -> pd.DataFrame:
         """Process Google Search Console data"""
         try:
-            # Read file
+            # Read file with optimized settings
             if file.name.endswith('.csv'):
-                df = pd.read_csv(file)
+                df = pd.read_csv(file, low_memory=False)
             else:
                 df = pd.read_excel(file)
 
@@ -242,6 +295,7 @@ class DataProcessor:
 
             # Auto-detect columns
             mappings = self.detect_columns(df, gsc_columns)
+            self.column_mappings.update(mappings)
 
             # Rename columns
             df = df.rename(columns=mappings)
@@ -272,9 +326,9 @@ class DataProcessor:
     def process_html_data(self, file) -> pd.DataFrame:
         """Process HTML metadata report"""
         try:
-            # Read file
+            # Read file with optimized settings
             if file.name.endswith('.csv'):
-                df = pd.read_csv(file)
+                df = pd.read_csv(file, low_memory=False)
             else:
                 df = pd.read_excel(file)
 
@@ -290,6 +344,7 @@ class DataProcessor:
 
             # Auto-detect columns
             mappings = self.detect_columns(df, html_columns)
+            self.column_mappings.update(mappings)
 
             # Rename columns
             df = df.rename(columns=mappings)
@@ -330,10 +385,12 @@ class DataProcessor:
         progress_bar = st.progress(0)
         status_text = st.empty()
 
+        extractor = self._get_content_extractor()
+
         for i, url in enumerate(urls):
             if url not in self.content_data:
                 status_text.text(f"Extracting content from URL {i+1} of {len(urls)}")
-                content = self.content_extractor.extract_main_content(url)
+                content = extractor.extract_main_content(url)
                 self.content_data[url] = content
                 progress_bar.progress((i + 1) / len(urls))
                 time.sleep(0.5)  # Rate limiting
@@ -362,6 +419,12 @@ class AnalysisEngine:
 
         if not common_urls:
             raise ValueError("No matching URLs found between GSC and HTML data")
+
+        # Performance limit with user notification
+        if len(common_urls) > 200:
+            st.warning(f"⚠️ Analyzing first 200 URLs for performance (found {len(common_urls)} total). "
+                      f"For larger datasets, consider filtering your data before upload.")
+            common_urls = list(common_urls)[:200]
 
         for url in common_urls:
             url_results = self._analyze_url(
@@ -572,10 +635,26 @@ def main():
         enable_search_volume = st.checkbox("Enable search volume data (DataforSEO API)")
 
         if enable_search_volume:
+            st.info("💰 Cost-optimized: Sends up to 1,000 keywords per API request")
             api_username = st.text_input("DataforSEO Username", type="password")
             api_password = st.text_input("DataforSEO Password", type="password")
+
+            # Location settings
+            location_code = st.number_input(
+                "Location Code", 
+                value=2840, 
+                help="Location code (2840 = USA, 2826 = UK, etc.)"
+            )
+            language_code = st.selectbox(
+                "Language Code",
+                options=["en", "es", "fr", "de", "it"],
+                index=0,
+                help="Language code for search volume data"
+            )
         else:
             api_username = api_password = None
+            location_code = 2840
+            language_code = "en"
 
         st.divider()
 
@@ -619,6 +698,13 @@ def main():
 
                 with st.expander("Preview GSC Data"):
                     st.dataframe(gsc_data.head())
+
+                # Show column mapping
+                if st.session_state.processor.column_mappings:
+                    st.caption("Auto-detected column mappings:")
+                    for orig, mapped in st.session_state.processor.column_mappings.items():
+                        if orig != mapped:
+                            st.text(f"  {orig} → {mapped}")
 
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
@@ -671,8 +757,13 @@ def main():
                         if enable_search_volume and api_username and api_password:
                             with st.spinner("Fetching search volume data..."):
                                 unique_queries = st.session_state.processor.gsc_data['query'].unique().tolist()
+                                st.info(f"📊 Fetching search volumes for {len(unique_queries)} keywords (batches of 1,000)...")
                                 dataforseo_client = DataforSEOClient(api_username, api_password)
-                                search_volumes = dataforseo_client.get_search_volumes(unique_queries)
+                                search_volumes = dataforseo_client.get_search_volumes(
+                                    unique_queries, 
+                                    location_code=location_code,
+                                    language_code=language_code
+                                )
                                 if search_volumes:
                                     st.success(f"✅ Retrieved search volumes for {len(search_volumes)} queries")
 
