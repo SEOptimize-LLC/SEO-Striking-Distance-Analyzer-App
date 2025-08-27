@@ -4,7 +4,7 @@ A Streamlit web application that analyzes if your top organic performing queries
 
 ## Features
 
-- **Excel File Upload**: Upload two Excel files - one with meta tags data and another with Google Search Console organic performance data
+- **Multi-format File Upload**: Upload Excel (.xlsx) or CSV files - one with meta tags data and another with Google Search Console organic performance data
 - **Auto Column Detection**: Automatically detects column names based on common patterns
 - **Web Scraping**: Extracts main content from URLs excluding navigation, footer, and sidebars
 - **Flexible Criteria**: Configurable minimum clicks threshold and number of top queries to analyze
@@ -23,8 +23,8 @@ A Streamlit web application that analyzes if your top organic performing queries
 ## Usage
 
 1. **Prepare your data files:**
-   - **Meta Tags Report**: Excel file containing URLs and their corresponding meta tags (Title, H1, H2s, Meta Description)
-   - **Organic Performance Report**: Google Search Console export with URLs, queries, clicks, impressions, and average position
+   - **Meta Tags Report**: Excel (.xlsx) or CSV file containing URLs and their corresponding meta tags (Title, H1, H2s, Meta Description)
+   - **Organic Performance Report**: Google Search Console export as Excel (.xlsx) or CSV file with URLs, queries, clicks, impressions, and average position
 
 2. **Run the application:**
    ```bash
@@ -64,9 +64,13 @@ The app checks if query terms appear in:
 - Python 3.9+
 - Streamlit
 - Pandas
-- OpenPyXL
+- OpenPyXL (for Excel files)
 - Requests
 - BeautifulSoup4
+
+**Supported File Formats:**
+- Excel files (.xlsx, .xls)
+- CSV files (.csv)
 
 ## License
 

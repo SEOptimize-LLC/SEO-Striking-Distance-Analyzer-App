@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from modules.data_loader import load_excel_files, detect_columns
+from modules.data_loader import load_data_file, detect_columns
 from modules.scraper import scrape_urls
 from modules.analyzer import analyze_striking_distance
 import time
@@ -12,7 +12,7 @@ st.markdown("Analyze if your top organic queries are properly optimized in your 
 
 # Sidebar configuration
 st.sidebar.header("Configuration")
-min_clicks = st.sidebar.slider("Minimum Clicks Threshold", 0, 1000, 10, 10)
+min_clicks = st.sidebar.slider("Minimum Clicks Threshold", 1, 5000, 10, 10)
 top_queries = st.sidebar.slider("Top Queries per URL", 1, 20, 5, 1)
 use_impressions_weighted = st.sidebar.checkbox("Use Impressions-Weighted Clicks", value=True)
 
@@ -21,18 +21,18 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("📄 Meta Tags Report")
-    meta_file = st.file_uploader("Upload Excel file with meta tags (Title, H1, H2s, Meta Description)", type=["xlsx"])
+    meta_file = st.file_uploader("Upload Excel or CSV file with meta tags (Title, H1, H2s, Meta Description)", type=["xlsx", "csv"])
 
 with col2:
     st.subheader("📊 Organic Performance Report")
-    organic_file = st.file_uploader("Upload Google Search Console export (URLs, Queries, Clicks, Impressions, Position)", type=["xlsx"])
+    organic_file = st.file_uploader("Upload Google Search Console export (URLs, Queries, Clicks, Impressions, Position)", type=["xlsx", "csv"])
 
 if meta_file and organic_file:
     try:
         with st.spinner("Loading data..."):
             # Load data
-            meta_df = load_excel_files(meta_file)
-            organic_df = load_excel_files(organic_file)
+            meta_df = load_data_file(meta_file)
+            organic_df = load_data_file(organic_file)
 
             # Detect columns
             meta_columns = detect_columns(meta_df, 'meta')

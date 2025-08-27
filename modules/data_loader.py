@@ -2,13 +2,22 @@ import pandas as pd
 import re
 from typing import Dict, List
 
-def load_excel_files(file) -> pd.DataFrame:
-    """Load Excel file and return DataFrame."""
+def load_data_file(file) -> pd.DataFrame:
+    """Load Excel or CSV file and return DataFrame."""
     try:
-        df = pd.read_excel(file, engine='openpyxl')
+        # Get file extension
+        file_name = file.name.lower()
+
+        if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
+            df = pd.read_excel(file, engine='openpyxl')
+        elif file_name.endswith('.csv'):
+            df = pd.read_csv(file)
+        else:
+            raise ValueError("Unsupported file format. Please upload .xlsx, .xls, or .csv files.")
+
         return df
     except Exception as e:
-        raise ValueError(f"Error loading Excel file: {str(e)}")
+        raise ValueError(f"Error loading file: {str(e)}")
 
 def detect_columns(df: pd.DataFrame, report_type: str) -> Dict[str, str]:
     """Auto-detect column names based on common patterns."""
