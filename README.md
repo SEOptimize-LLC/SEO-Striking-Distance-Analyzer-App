@@ -1,51 +1,81 @@
 # SEO Striking Distance Analyzer
 
-A Streamlit application that identifies keyword optimization opportunities by analyzing if top-performing organic queries are present in key HTML elements.
+A Streamlit web application that analyzes if your top organic performing queries are properly optimized in your HTML meta tags and content.
 
 ## Features
 
-- **Intelligent Column Detection**: Automatically maps columns from different tools (GSC, Screaming Frog, etc.)
-- **Advanced Text Matching**: Uses multiple strategies to detect query presence in HTML elements
-- **Striking Distance Analysis**: Focuses on keywords in positions 4-20 for quick wins
-- **Priority Scoring**: Identifies high-impact opportunities first
-- **Export Functionality**: Download results and summary reports
+- **Excel File Upload**: Upload two Excel files - one with meta tags data and another with Google Search Console organic performance data
+- **Auto Column Detection**: Automatically detects column names based on common patterns
+- **Web Scraping**: Extracts main content from URLs excluding navigation, footer, and sidebars
+- **Flexible Criteria**: Configurable minimum clicks threshold and number of top queries to analyze
+- **Impressions-Weighted Analysis**: Option to use clicks/impressions ratio for better query evaluation
+- **Detailed Results**: TRUE/FALSE analysis for each URL-query combination across multiple HTML elements
+- **Export Functionality**: Download results as CSV for further analysis
 
-## How It Works
+## Installation
 
-1. **Upload Data**: Provide your Google Search Console export and HTML metadata report
-2. **Auto-Detection**: App automatically detects and maps relevant columns
-3. **Analysis**: Identifies top queries per URL and checks presence in Title, H1, H2, Meta Description
-4. **Results**: Shows optimization opportunities with priority scoring
+1. Clone or download this repository
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## File Requirements
+## Usage
 
-### Google Search Console Data
-- Must contain: URL, Query, Clicks, Position
-- Optional: Impressions
-- Formats: CSV or Excel
+1. **Prepare your data files:**
+   - **Meta Tags Report**: Excel file containing URLs and their corresponding meta tags (Title, H1, H2s, Meta Description)
+   - **Organic Performance Report**: Google Search Console export with URLs, queries, clicks, impressions, and average position
 
-### HTML Metadata Report  
-- Must contain: URL, Title
-- Optional: H1, H2, Meta Description
-- Formats: CSV or Excel
+2. **Run the application:**
+   ```bash
+   streamlit run app.py
+   ```
 
-## Quick Start
+3. **Upload your files** and configure the analysis parameters in the sidebar
 
-1. Export your GSC data (Queries report with pages)
-2. Export HTML metadata from your crawler (Screaming Frog, etc.)
-3. Upload both files to the app
-4. Review the analysis and download results
+4. **Click "🚀 Analyze Striking Distance"** to start the analysis
 
-## Deployment
+5. **Review results** and download the CSV export
 
-This app can be deployed on Streamlit Cloud:
+## Configuration Options
 
-1. Fork this repository
-2. Connect to Streamlit Cloud
-3. Deploy directly from GitHub
+- **Minimum Clicks Threshold**: Filter out queries with fewer than this number of clicks
+- **Top Queries per URL**: Number of highest-performing queries to analyze per URL
+- **Use Impressions-Weighted Clicks**: Calculate query performance using clicks/impressions ratio
 
-## Configuration
+## Analysis Elements
 
-- **Top Queries**: Number of top-performing queries to analyze per URL (default: 5)
-- **Minimum Clicks**: Threshold for including queries in analysis (default: 1)
-- **Striking Distance**: Position range to prioritize (default: 4-20)
+The app checks if query terms appear in:
+- Page Title
+- H1 heading
+- H2 headings (up to 5)
+- Meta description
+- Main content (excluding navigation, footer, sidebars)
+
+## Deployment on Streamlit Cloud
+
+1. Create a new app on [Streamlit Cloud](https://share.streamlit.io)
+2. Connect your GitHub repository
+3. Set the main file path to `app.py`
+4. Deploy!
+
+## Requirements
+
+- Python 3.9+
+- Streamlit
+- Pandas
+- OpenPyXL
+- Requests
+- BeautifulSoup4
+
+## License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Support
+
+If you encounter any issues or have questions, please open an issue on GitHub.
