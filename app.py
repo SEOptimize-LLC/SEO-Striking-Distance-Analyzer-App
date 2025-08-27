@@ -12,7 +12,7 @@ st.markdown("Analyze if your top organic queries are properly optimized in your 
 
 # Sidebar configuration
 st.sidebar.header("Configuration")
-min_clicks = st.sidebar.slider("Minimum Clicks Threshold", 0, 1000, 10, 10)
+min_clicks = st.sidebar.slider("Minimum Clicks Threshold", 0, 1, 10, 100,1000)
 top_queries = st.sidebar.slider("Top Queries per URL", 1, 20, 5, 1)
 use_impressions_weighted = st.sidebar.checkbox("Use Impressions-Weighted Clicks", value=True)
 
@@ -107,4 +107,5 @@ else:
 
 # Footer
 st.markdown("---")
+
 st.markdown("Built with Streamlit | SEO Striking Distance Analysis Tool")
