@@ -88,12 +88,12 @@ def find_best_match(columns: pd.Index, patterns: List[str]) -> str:
     for pattern in patterns:
         # Exact match
         if pattern in columns.values:
-            return columns[columns == pattern].iloc[0]
+            return columns[columns == pattern][0]
 
         # Fuzzy match using regex
         regex_pattern = re.compile(r'\b' + re.escape(pattern) + r'\b', re.IGNORECASE)
         matches = columns[columns.str.contains(regex_pattern, na=False)]
         if not matches.empty:
-            return matches.iloc[0]
+            return matches[0]
 
     return None
