@@ -48,11 +48,11 @@ def detect_columns(df: pd.DataFrame, report_type: str) -> Dict[str, str]:
 
     elif report_type == 'organic':
         # URL patterns
-        url_patterns = ['url', 'page', 'landing page', 'final url']
+        url_patterns = ['url', 'page', 'landing page', 'final url', 'address', 'landing page']
         detected['url'] = find_best_match(columns, url_patterns)
 
         # Query patterns
-        query_patterns = ['query', 'keyword', 'search query', 'search term']
+        query_patterns = ['query', 'keyword', 'search query', 'search term', 'queries', 'keywords']
         detected['query'] = find_best_match(columns, query_patterns)
 
         # Clicks patterns
@@ -64,7 +64,7 @@ def detect_columns(df: pd.DataFrame, report_type: str) -> Dict[str, str]:
         detected['impressions'] = find_best_match(columns, impressions_patterns)
 
         # Position patterns
-        position_patterns = ['position', 'avg position', 'ranking', 'rank']
+        position_patterns = ['position', 'avg position', 'ranking', 'rank', 'avg. pos', 'avg pos', 'average position', 'avg position']
         detected['position'] = find_best_match(columns, position_patterns)
 
     # Check for missing required columns
@@ -85,12 +85,24 @@ def detect_columns(df: pd.DataFrame, report_type: str) -> Dict[str, str]:
 
 def find_best_match(columns: pd.Index, patterns: List[str]) -> str:
     """Find the best matching column name from a list of patterns."""
-    for pattern in patterns:
-        # Exact match
-        if pattern in columns.values:
-            return columns[columns == pattern][0]
+    # Normalize column names for better matching
+    normalized_columns = columns.str.lower().str.replace(r'[^\w\s]', '', regex=True).str.strip()
 
-        # Fuzzy match using regex
+    for pattern in patterns:
+        # Normalize pattern for comparison
+        normalized_pattern = pattern.lower().replace('.', '').replace(' ', '').strip()
+
+        # Check exact matches first (case-insensitive)
+        for i, col in enumerate(columns):
+            if col.lower().strip() == pattern.lower().strip():
+                return col
+
+        # Check normalized matches
+        for i, norm_col in enumerate(normalized_columns):
+            if normalized_pattern in norm_col or norm_col in normalized_pattern:
+                return columns[i]
+
+        # Fuzzy match using regex (more flexible)
         regex_pattern = re.compile(r'\b' + re.escape(pattern) + r'\b', re.IGNORECASE)
         matches = columns[columns.str.contains(regex_pattern, na=False)]
         if not matches.empty:
