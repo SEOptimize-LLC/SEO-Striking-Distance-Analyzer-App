@@ -31,46 +31,96 @@ if meta_file and organic_file:
     try:
         with st.spinner("Loading data..."):
             # Load data
-            meta_df = load_data_file(meta_file)
-            organic_df = load_data_file(organic_file)
+            try:
+                meta_df = load_data_file(meta_file)
+                st.info(f"✓ Meta tags file loaded: {len(meta_df)} rows")
+            except Exception as e:
+                st.error(f"❌ Error loading meta tags file: {str(e)}")
+                st.stop()
+
+            try:
+                organic_df = load_data_file(organic_file)
+                st.info(f"✓ Organic performance file loaded: {len(organic_df)} rows")
+            except Exception as e:
+                st.error(f"❌ Error loading organic performance file: {str(e)}")
+                st.stop()
 
             # Detect columns
-            meta_columns = detect_columns(meta_df, 'meta')
-            organic_columns = detect_columns(organic_df, 'organic')
+            try:
+                meta_columns = detect_columns(meta_df, 'meta')
+            except ValueError as e:
+                st.error(f"❌ Meta tags file column detection failed: {str(e)}")
+                st.info("💡 Please ensure your file contains columns for: URL/Address, Title, H1, and Meta Description")
+                st.stop()
 
-            st.success("Data loaded successfully!")
+            try:
+                organic_columns = detect_columns(organic_df, 'organic')
+            except ValueError as e:
+                st.error(f"❌ Organic performance file column detection failed: {str(e)}")
+                st.info("💡 Please ensure your file contains columns for: URL/Landing Page, Query, Clicks, Impressions, and Position")
+                st.stop()
+
+            st.success("✅ Data loaded successfully!")
             st.subheader("Detected Columns")
 
             col1, col2 = st.columns(2)
             with col1:
                 st.write("**Meta Tags Report:**")
                 for key, value in meta_columns.items():
-                    st.write(f"{key}: {value}")
+                    st.write(f"✓ {key}: `{value}`")
 
             with col2:
                 st.write("**Organic Report:**")
                 for key, value in organic_columns.items():
-                    st.write(f"{key}: {value}")
+                    st.write(f"✓ {key}: `{value}`")
 
         if st.button("🚀 Analyze Striking Distance", type="primary"):
-            with st.spinner("Scraping URLs and analyzing... This may take a while."):
-                progress_bar = st.progress(0)
+            try:
+                with st.spinner("Scraping URLs and analyzing... This may take a while."):
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
 
-                # Scrape URLs for content
-                progress_bar.progress(10, "Scraping URLs...")
-                scraped_data = scrape_urls(meta_df[meta_columns['url']].tolist())
+                    # Scrape URLs for content
+                    status_text.text("📡 Scraping URLs for content...")
+                    progress_bar.progress(10)
 
-                # Analyze striking distance
-                progress_bar.progress(50, "Analyzing data...")
-                results = analyze_striking_distance(
-                    meta_df, organic_df, scraped_data,
-                    meta_columns, organic_columns,
-                    min_clicks, top_queries, use_impressions_weighted
-                )
+                    urls_to_scrape = meta_df[meta_columns['url']].tolist()
+                    st.info(f"🔍 Scraping {len(urls_to_scrape)} URLs...")
 
-                progress_bar.progress(100, "Complete!")
+                    try:
+                        scraped_data = scrape_urls(urls_to_scrape)
+                        successful_scrapes = sum(1 for v in scraped_data.values() if v)
+                        st.info(f"✓ Successfully scraped {successful_scrapes}/{len(urls_to_scrape)} URLs")
+                    except Exception as e:
+                        st.error(f"❌ Scraping error: {str(e)}")
+                        st.warning("⚠️ Continuing with partial data...")
+                        scraped_data = {}
 
-            st.success("Analysis complete!")
+                    # Analyze striking distance
+                    status_text.text("🔬 Analyzing keyword opportunities...")
+                    progress_bar.progress(50)
+
+                    try:
+                        results = analyze_striking_distance(
+                            meta_df, organic_df, scraped_data,
+                            meta_columns, organic_columns,
+                            min_clicks, top_queries, use_impressions_weighted
+                        )
+                    except Exception as e:
+                        st.error(f"❌ Analysis error: {str(e)}")
+                        st.stop()
+
+                    progress_bar.progress(100)
+                    status_text.text("✅ Analysis complete!")
+
+                st.success(f"🎉 Analysis complete! Found {len(results)} keyword opportunities.")
+
+            except Exception as e:
+                st.error(f"❌ Unexpected error during analysis: {str(e)}")
+                import traceback
+                with st.expander("🔍 View Error Details"):
+                    st.code(traceback.format_exc())
+                st.stop()
 
             # Display results
             st.subheader("📋 Results")
@@ -87,7 +137,7 @@ if meta_file and organic_file:
             with col2:
                 st.metric("Optimized Combinations", optimized_count)
             with col3:
-                st.metric("Optimization Rate", ".1f")
+                st.metric("Optimization Rate", f"{optimization_rate:.1f}%")
 
             # Download results
             csv = results.to_csv(index=False)

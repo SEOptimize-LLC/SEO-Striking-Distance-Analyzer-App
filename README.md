@@ -1,6 +1,6 @@
 # SEO Striking Distance Analyzer
 
-A Streamlit web application that analyzes if your top organic performing queries are properly optimized in your HTML meta tags and content.
+An AI-powered Streamlit application that intelligently analyzes and prioritizes SEO keyword opportunities based on semantic relevance, traffic potential, and ranking opportunity.
 
 ## Features
 
