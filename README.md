@@ -7,8 +7,11 @@ An AI-powered Streamlit application that intelligently analyzes and prioritizes 
 - **Multi-format File Upload**: Upload Excel (.xlsx) or CSV files - one with meta tags data and another with Google Search Console organic performance data
 - **Auto Column Detection**: Automatically detects column names based on common patterns
 - **Web Scraping**: Extracts main content from URLs excluding navigation, footer, and sidebars
+- **DataForSEO Integration**: Enrich keywords with search volume and keyword difficulty scores (optional)
+- **Intelligent Batching**: Automatically batches 1,000 keywords per API request for cost efficiency
 - **Flexible Criteria**: Configurable minimum clicks threshold and number of top queries to analyze
 - **Impressions-Weighted Analysis**: Option to use clicks/impressions ratio for better query evaluation
+- **Traffic Potential Analysis**: Identifies high-value opportunities (high volume + low difficulty)
 - **Detailed Results**: TRUE/FALSE analysis for each URL-query combination across multiple HTML elements
 - **Export Functionality**: Download results as CSV for further analysis
 
@@ -39,9 +42,40 @@ An AI-powered Streamlit application that intelligently analyzes and prioritizes 
 
 ## Configuration Options
 
+### Analysis Settings
 - **Minimum Clicks Threshold**: Filter out queries with fewer than this number of clicks
 - **Top Queries per URL**: Number of highest-performing queries to analyze per URL
 - **Use Impressions-Weighted Clicks**: Calculate query performance using clicks/impressions ratio
+
+### Data Enrichment (Optional)
+- **Enrich with DataForSEO**: Add search volume and keyword difficulty scores to your analysis
+
+#### Setting up DataForSEO (Optional but Recommended)
+
+1. **Sign up for DataForSEO**: Get your API credentials at [https://app.dataforseo.com/api-dashboard](https://app.dataforseo.com/api-dashboard)
+
+2. **For Local Development**:
+   - Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`
+   - Add your credentials:
+     ```toml
+     DATAFORSEO_LOGIN = "your-email@example.com"
+     DATAFORSEO_PASSWORD = "your-api-password"
+     ```
+
+3. **For Streamlit Cloud**:
+   - Go to your app settings
+   - Navigate to the "Secrets" tab
+   - Add your credentials:
+     ```toml
+     DATAFORSEO_LOGIN = "your-email@example.com"
+     DATAFORSEO_PASSWORD = "your-api-password"
+     ```
+
+4. **Cost Optimization**:
+   - Keywords are automatically batched in groups of 1,000
+   - Rate limited to 12 requests/minute (API requirement)
+   - Example: 10,000 keywords = 10 API requests = ~$1
+   - Caching prevents duplicate API calls for the same keywords
 
 ## Analysis Elements
 

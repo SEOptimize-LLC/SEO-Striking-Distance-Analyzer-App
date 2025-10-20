@@ -3,6 +3,7 @@ import pandas as pd
 from modules.data_loader import load_data_file, detect_columns
 from modules.scraper import scrape_urls
 from modules.analyzer import analyze_striking_distance
+from modules.dataforseo import DataForSEOClient
 import time
 
 st.set_page_config(page_title="SEO Striking Distance Analyzer", page_icon="🔍", layout="wide")
@@ -12,9 +13,22 @@ st.markdown("Analyze if your top organic queries are properly optimized in your 
 
 # Sidebar configuration
 st.sidebar.header("Configuration")
+
+st.sidebar.subheader("📊 Analysis Settings")
 min_clicks = st.sidebar.slider("Minimum Clicks Threshold", 1, 5000, 10, 10)
 top_queries = st.sidebar.slider("Top Queries per URL", 1, 20, 5, 1)
 use_impressions_weighted = st.sidebar.checkbox("Use Impressions-Weighted Clicks", value=True)
+
+st.sidebar.subheader("🚀 Data Enrichment")
+use_dataforseo = st.sidebar.checkbox(
+    "Enrich with DataForSEO",
+    value=False,
+    help="Add search volume and keyword difficulty scores from DataForSEO API"
+)
+
+if use_dataforseo:
+    st.sidebar.info("💡 Ensure DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD are set in Streamlit secrets")
+    st.sidebar.caption("⚡ Keywords are batched in groups of 1,000 for cost efficiency")
 
 # File uploads
 col1, col2 = st.columns(2)
@@ -110,6 +124,22 @@ if meta_file and organic_file:
                         st.error(f"❌ Analysis error: {str(e)}")
                         st.stop()
 
+                    # Enrich with DataForSEO if enabled
+                    if use_dataforseo and len(results) > 0:
+                        status_text.text("🔍 Enriching with search volume & keyword difficulty...")
+                        progress_bar.progress(75)
+
+                        try:
+                            client = DataForSEOClient()
+                            results = client.enrich_dataframe(results, keyword_column='query')
+                            st.info(f"✓ Enriched {len(results)} keywords with search volume and KD scores")
+                        except ValueError as e:
+                            st.warning(f"⚠️ DataForSEO credentials not found: {str(e)}")
+                            st.info("Add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD to Streamlit secrets to enable enrichment")
+                        except Exception as e:
+                            st.error(f"❌ DataForSEO enrichment error: {str(e)}")
+                            st.warning("⚠️ Continuing without enrichment...")
+
                     progress_bar.progress(100)
                     status_text.text("✅ Analysis complete!")
 
@@ -128,16 +158,46 @@ if meta_file and organic_file:
 
             # Summary statistics
             total_checks = len(results)
-            optimized_count = results['Overall_Optimized'].sum()
+            optimized_count = results['overall_optimized'].sum() if 'overall_optimized' in results.columns else 0
             optimization_rate = (optimized_count / total_checks * 100) if total_checks > 0 else 0
 
-            col1, col2, col3 = st.columns(3)
+            # Create metrics columns based on available data
+            if use_dataforseo and 'search_volume' in results.columns:
+                col1, col2, col3, col4 = st.columns(4)
+            else:
+                col1, col2, col3 = st.columns(3)
+
             with col1:
-                st.metric("Total URL-Query Combinations", total_checks)
+                st.metric("Total URL-Query Combinations", f"{total_checks:,}")
             with col2:
-                st.metric("Optimized Combinations", optimized_count)
+                st.metric("Optimized Combinations", f"{optimized_count:,}")
             with col3:
                 st.metric("Optimization Rate", f"{optimization_rate:.1f}%")
+
+            if use_dataforseo and 'search_volume' in results.columns:
+                with col4:
+                    total_volume = results['search_volume'].sum()
+                    st.metric("Total Search Volume", f"{int(total_volume):,}")
+
+            # Additional metrics for DataForSEO enriched data
+            if use_dataforseo and 'search_volume' in results.columns:
+                st.subheader("📈 Traffic Potential Insights")
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    avg_volume = results['search_volume'].mean()
+                    st.metric("Avg. Search Volume", f"{int(avg_volume):,}")
+                with col2:
+                    avg_kd = results['keyword_difficulty'].mean()
+                    st.metric("Avg. Keyword Difficulty", f"{int(avg_kd)}/100")
+                with col3:
+                    # High-value opportunities: high volume + low difficulty + not optimized
+                    high_value = results[
+                        (results['search_volume'] > avg_volume) &
+                        (results['keyword_difficulty'] < 50) &
+                        (results['overall_optimized'] == False)
+                    ]
+                    st.metric("High-Value Opportunities", f"{len(high_value):,}")
 
             # Download results
             csv = results.to_csv(index=False)
