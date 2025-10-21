@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from modules.data_loader import load_data_file, detect_columns
+from modules.data_loader import load_data_file
 from modules.scraper import scrape_urls
 from modules.analyzer import analyze_striking_distance
 from modules.dataforseo import DataForSEOClient
@@ -279,19 +279,39 @@ if using_standard or using_multi_source:
                     st.error(f"❌ Error loading meta tags file: {str(e)}")
                     st.stop()
 
-            # Detect columns for compatibility with existing code
-            try:
-                meta_columns = detect_columns(meta_df, 'meta')
-            except ValueError as e:
-                st.error(f"❌ Meta tags file column detection failed: {str(e)}")
-                st.info("💡 Please ensure your file contains columns for: URL/Address, Title, H1, and Meta Description")
+            # DataParser already standardized column names, so use them directly
+            # Standardized column names from DataParser:
+            # Meta: url, title, h1, h2, meta_description
+            # Organic: url, query, position, clicks, impressions
+
+            meta_columns = {
+                'url': 'url',
+                'title': 'title',
+                'h1': 'h1',
+                'h2': 'h2',
+                'meta_description': 'meta_description'
+            }
+
+            organic_columns = {
+                'url': 'url',
+                'query': 'query',
+                'position': 'position',
+                'clicks': 'clicks',
+                'impressions': 'impressions'
+            }
+
+            # Verify required columns exist
+            missing_meta = [col for col in ['url', 'title'] if col not in meta_df.columns]
+            missing_organic = [col for col in ['url', 'query', 'position'] if col not in organic_df.columns]
+
+            if missing_meta:
+                st.error(f"❌ Missing required columns in meta file: {', '.join(missing_meta)}")
+                st.info("💡 Please ensure your file is a valid Screaming Frog export or contains: URL, Title, H1, Meta Description")
                 st.stop()
 
-            try:
-                organic_columns = detect_columns(organic_df, 'organic')
-            except ValueError as e:
-                st.error(f"❌ Keyword data column detection failed: {str(e)}")
-                st.info("💡 Please ensure your file contains columns for: URL/Landing Page, Query, Clicks, Impressions, and Position")
+            if missing_organic:
+                st.error(f"❌ Missing required columns in keyword file: {', '.join(missing_organic)}")
+                st.info("💡 Please ensure your file is a valid GSC export or contains: URL, Query, Position, Clicks, Impressions")
                 st.stop()
 
             st.success("✅ Data loaded and standardized successfully!")
@@ -312,18 +332,16 @@ if using_standard or using_multi_source:
                 if excluded_count > 0:
                     st.info(f"🚫 Excluded {excluded_count:,} branded queries from analysis ({len(organic_df):,} remaining)")
 
-            # Show detected columns in expander
-            with st.expander("🔍 View Detected Columns"):
+            # Show standardized columns in expander
+            with st.expander("🔍 View Standardized Columns"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.write("**Meta Tags Report:**")
-                    for key, value in meta_columns.items():
-                        st.write(f"✓ {key}: `{value}`")
+                    st.write("**Meta Tags File:**")
+                    st.write(f"✓ Available columns: {', '.join([f'`{col}`' for col in meta_df.columns if col in meta_columns.values()])}")
 
                 with col2:
-                    st.write("**Keyword Data:**")
-                    for key, value in organic_columns.items():
-                        st.write(f"✓ {key}: `{value}`")
+                    st.write("**Keyword Data File:**")
+                    st.write(f"✓ Available columns: {', '.join([f'`{col}`' for col in organic_df.columns if col in organic_columns.values()])}")
 
         if st.button("🚀 Analyze Striking Distance", type="primary"):
             try:
