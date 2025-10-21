@@ -68,10 +68,10 @@ if use_ai_analysis:
         help="Choose your AI analysis strategy. Tiered is most cost-effective."
     )
 
-    # Check which API keys are available
-    has_openai = "OPENAI_API_KEY" in st.secrets
-    has_anthropic = "ANTHROPIC_API_KEY" in st.secrets
-    has_google = "GOOGLE_AI_API_KEY" in st.secrets
+    # Check which API keys are available (key exists AND has a value)
+    has_openai = "OPENAI_API_KEY" in st.secrets and st.secrets.get("OPENAI_API_KEY", "").strip()
+    has_anthropic = "ANTHROPIC_API_KEY" in st.secrets and st.secrets.get("ANTHROPIC_API_KEY", "").strip()
+    has_google = "GOOGLE_AI_API_KEY" in st.secrets and st.secrets.get("GOOGLE_AI_API_KEY", "").strip()
 
     # Show API key status based on selected model
     st.sidebar.markdown("**🔑 API Key Status:**")
