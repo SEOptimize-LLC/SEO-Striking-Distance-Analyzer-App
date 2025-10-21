@@ -48,6 +48,22 @@ class DataParser:
         """
         columns = [col.lower().strip() for col in df.columns]
 
+        # Screaming Frog signatures (check first, as it's most specific for meta data)
+        # Primary: Address + Title columns
+        has_address = any('address' in col for col in columns)
+        has_title_1 = any('title 1' in col for col in columns)
+        has_h1_pattern = any('h1-1' in col or 'h1-2' in col for col in columns)
+        has_meta_desc_1 = any('meta description 1' in col for col in columns)
+
+        # If has Address AND (Title 1 OR H1-1), it's likely Screaming Frog
+        if has_address and (has_title_1 or has_h1_pattern or has_meta_desc_1):
+            return 'screaming_frog'
+
+        # Google Search Console signatures
+        gsc_signatures = ['landing page', 'query', 'clicks', 'impressions']
+        if all(any(sig in col for col in columns) for sig in gsc_signatures):
+            return 'gsc'
+
         # Ahrefs signatures
         ahrefs_signatures = ['volume', 'keyword difficulty', 'cpc', 'parent topic']
         if any('ahrefs' in col for col in columns) or \
@@ -59,16 +75,6 @@ class DataParser:
         if any('semrush' in col for col in columns) or \
            sum(1 for sig in semrush_signatures if any(sig in col for col in columns)) >= 2:
             return 'semrush'
-
-        # Google Search Console signatures
-        gsc_signatures = ['landing page', 'query', 'clicks', 'impressions']
-        if all(any(sig in col for col in columns) for sig in gsc_signatures):
-            return 'gsc'
-
-        # Screaming Frog signatures
-        sf_signatures = ['address', 'indexability', 'status code', 'title 1']
-        if sum(1 for sig in sf_signatures if any(sig in col for col in columns)) >= 3:
-            return 'screaming_frog'
 
         return 'unknown'
 
