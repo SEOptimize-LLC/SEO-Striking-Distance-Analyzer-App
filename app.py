@@ -37,12 +37,36 @@ st.sidebar.subheader("🤖 AI-Powered Analysis")
 use_ai_analysis = st.sidebar.checkbox(
     "Enable AI Semantic Analysis",
     value=False,
-    help="Use tiered AI models to score keyword relevancy (Gemini Flash → GPT-4o → Claude Sonnet 4.5)"
+    help="Use AI models to score keyword relevancy and extract topics"
 )
 
 if use_ai_analysis:
-    st.sidebar.info("💡 Ensure OPENAI_API_KEY, ANTHROPIC_API_KEY, and GOOGLE_AI_API_KEY are set in secrets")
-    st.sidebar.caption("⚡ Tiered analysis: Gemini filters → GPT-4o scores → Claude deep analysis on top 20%")
+    ai_model_option = st.sidebar.selectbox(
+        "AI Model Strategy",
+        options=[
+            "Tiered (Gemini → GPT-4o → Claude)",
+            "Gemini 2.0 Flash Only",
+            "GPT-4o Only",
+            "Claude Sonnet 4.5 Only"
+        ],
+        help="Choose your AI analysis strategy. Tiered is most cost-effective."
+    )
+
+    # Show relevant API key requirements
+    if "Tiered" in ai_model_option:
+        st.sidebar.info("💡 Requires: OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_AI_API_KEY")
+        st.sidebar.caption("⚡ Most cost-effective: Gemini filters → GPT-4o scores → Claude deep analysis on top 20%")
+    elif "Gemini" in ai_model_option:
+        st.sidebar.info("💡 Requires: GOOGLE_AI_API_KEY")
+        st.sidebar.caption("⚡ Fastest & cheapest option (~$0.075/M tokens)")
+    elif "GPT-4o" in ai_model_option:
+        st.sidebar.info("💡 Requires: OPENAI_API_KEY")
+        st.sidebar.caption("⚡ Balanced cost & quality ($2.50/M input)")
+    elif "Claude" in ai_model_option:
+        st.sidebar.info("💡 Requires: ANTHROPIC_API_KEY")
+        st.sidebar.caption("⚡ Highest quality analysis ($3/M input)")
+else:
+    ai_model_option = None
 
 # File uploads
 st.subheader("📁 Data Sources")
@@ -51,67 +75,80 @@ st.subheader("📁 Data Sources")
 tab1, tab2 = st.tabs(["🔄 Standard Upload", "🚀 Multi-Source Upload"])
 
 with tab1:
-    st.markdown("Upload two files: Meta tags + Keyword performance data")
+    st.markdown("### 📤 Standard Upload Mode")
+    st.success("💡 **Recommended**: Upload Screaming Frog + Google Search Console (both required)")
+    st.caption("✨ Tip: Enable DataForSEO enrichment in sidebar for search volume & keyword difficulty")
+
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**📄 Meta Tags Report**")
-        st.caption("Screaming Frog crawl or custom export")
+        st.markdown("**📄 1. Screaming Frog Export (Required)**")
+        st.caption("Contains: URL, Title, H1, H2s, Meta Description")
+        st.caption("Provides: On-page SEO data")
         meta_file = st.file_uploader(
-            "Meta tags file",
+            "Upload Screaming Frog crawl",
             type=["xlsx", "csv"],
             key="meta_standard",
-            help="Upload Screaming Frog crawl or CSV with: URL, Title, H1, H2s, Meta Description"
+            help="Export from Screaming Frog with meta tags and on-page elements"
         )
 
     with col2:
-        st.markdown("**📊 Keyword Performance**")
-        st.caption("GSC, Ahrefs, or Semrush export")
+        st.markdown("**📊 2. Google Search Console (Required)**")
+        st.caption("Contains: URL, Query, Position, Clicks, Impressions")
+        st.caption("Provides: Actual ranking performance data")
         organic_file = st.file_uploader(
-            "Keyword data file",
+            "Upload GSC Performance Report",
             type=["xlsx", "csv"],
             key="organic_standard",
-            help="Upload GSC, Ahrefs, or Semrush keyword export"
+            help="Export from GSC with keyword performance data (clicks, impressions, position)"
         )
 
 with tab2:
-    st.markdown("Upload multiple keyword sources - they'll be automatically merged!")
+    st.markdown("### 🚀 Multi-Source Upload Mode")
+    st.info("💡 **Use this when**: You don't have GSC access, want to merge multiple sources, or only have Ahrefs/Semrush data")
+    st.warning("⚠️ Note: Ahrefs/Semrush don't provide clicks/impressions. For best results, use Standard Upload with GSC + DataForSEO enrichment")
 
+    st.markdown("**📊 Keyword Sources** (Upload at least one)")
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.markdown("**📊 Google Search Console**")
+        st.markdown("**Google Search Console**")
+        st.caption("Optional")
         gsc_file = st.file_uploader(
-            "GSC export (optional)",
+            "GSC export",
             type=["xlsx", "csv"],
             key="gsc_multi",
-            help="Upload GSC performance report"
+            help="GSC performance report with URL, Query, Position, Clicks, Impressions"
         )
 
     with col2:
-        st.markdown("**🔍 Ahrefs**")
+        st.markdown("**Ahrefs**")
+        st.caption("Optional")
         ahrefs_file = st.file_uploader(
-            "Ahrefs keywords (optional)",
+            "Ahrefs keywords",
             type=["xlsx", "csv"],
             key="ahrefs_multi",
-            help="Upload Ahrefs organic keywords export"
+            help="Ahrefs organic keywords export"
         )
 
     with col3:
-        st.markdown("**📈 Semrush**")
+        st.markdown("**Semrush**")
+        st.caption("Optional")
         semrush_file = st.file_uploader(
-            "Semrush keywords (optional)",
+            "Semrush keywords",
             type=["xlsx", "csv"],
             key="semrush_multi",
-            help="Upload Semrush organic positions export"
+            help="Semrush organic positions export"
         )
 
-    st.markdown("**📄 Meta Tags / Crawl Data**")
+    st.markdown("---")
+    st.markdown("**📄 Meta Tags / Crawl Data** (Optional but recommended)")
+    st.caption("For better analysis, upload a Screaming Frog crawl with URL, Title, H1, Meta Description")
     meta_file_multi = st.file_uploader(
         "Screaming Frog or meta tags file",
         type=["xlsx", "csv"],
         key="meta_multi",
-        help="Upload Screaming Frog crawl or meta tags export"
+        help="Provides on-page SEO data for more accurate keyword relevancy analysis"
     )
 
 # Determine which mode we're in
@@ -293,11 +330,29 @@ if using_standard or using_multi_source:
                         try:
                             analyzer = AIAnalyzer()
 
+                            # Determine which model(s) to use based on user selection
+                            if "Tiered" in ai_model_option:
+                                use_tiered = True
+                                topic_model = "gpt-4o"
+                                analysis_mode = "tiered"
+                            elif "Gemini" in ai_model_option:
+                                use_tiered = False
+                                topic_model = "gemini-flash"
+                                analysis_mode = "gemini-flash"
+                            elif "GPT-4o" in ai_model_option:
+                                use_tiered = False
+                                topic_model = "gpt-4o"
+                                analysis_mode = "gpt-4o"
+                            elif "Claude" in ai_model_option:
+                                use_tiered = False
+                                topic_model = "claude-sonnet-4"
+                                analysis_mode = "claude-sonnet-4"
+
                             # Extract topics and score keywords per URL
                             ai_scores = []
                             urls_processed = results['url'].unique()
 
-                            st.info(f"🔬 Analyzing {len(urls_processed)} URLs with AI...")
+                            st.info(f"🔬 Analyzing {len(urls_processed)} URLs with {ai_model_option}...")
 
                             for url in urls_processed:
                                 # Get URL data
@@ -313,15 +368,34 @@ if using_standard or using_multi_source:
                                     title=url_data[meta_columns['title']],
                                     h1=url_data.get(meta_columns.get('h1'), ''),
                                     content_snippet=content_snippet,
-                                    model="gpt-4o"  # Use GPT-4o for topic extraction
+                                    model=topic_model
                                 )
 
-                                # Run tiered analysis on keywords
-                                keyword_analysis = analyzer.tiered_analysis(
-                                    keywords=url_keywords,
-                                    url_topic=url_topic,
-                                    show_progress=False
-                                )
+                                # Run analysis based on selected mode
+                                if use_tiered:
+                                    # Tiered analysis
+                                    keyword_analysis = analyzer.tiered_analysis(
+                                        keywords=url_keywords,
+                                        url_topic=url_topic,
+                                        show_progress=False
+                                    )
+                                else:
+                                    # Single model analysis
+                                    keyword_analysis = analyzer.batch_score_keywords(
+                                        keywords=url_keywords,
+                                        url_topic=url_topic,
+                                        model=analysis_mode,
+                                        show_progress=False
+                                    )
+                                    # Convert to expected format
+                                    keyword_analysis = {
+                                        kw: {
+                                            'relevancy_score': score,
+                                            'tier': analysis_mode,
+                                            'confidence': 'high' if score >= 70 else 'medium' if score >= 40 else 'low'
+                                        }
+                                        for kw, score in keyword_analysis.items()
+                                    }
 
                                 # Add scores to results
                                 for keyword, analysis_data in keyword_analysis.items():
@@ -337,7 +411,7 @@ if using_standard or using_multi_source:
                             ai_df = pd.DataFrame(ai_scores)
                             results = results.merge(ai_df, on=['url', 'query'], how='left')
 
-                            st.info(f"✓ AI analysis complete: {len(ai_scores)} keywords scored")
+                            st.info(f"✓ AI analysis complete: {len(ai_scores)} keywords scored using {ai_model_option}")
 
                         except Exception as e:
                             st.warning(f"⚠️ AI analysis error: {str(e)}")
