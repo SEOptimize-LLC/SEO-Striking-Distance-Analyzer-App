@@ -5,6 +5,8 @@ from modules.scraper import scrape_urls
 from modules.analyzer import analyze_striking_distance
 from modules.dataforseo import DataForSEOClient
 from modules.data_parsers import DataParser
+from modules.ai_analysis import AIAnalyzer
+from modules.prioritization import PrioritizationEngine
 import time
 
 st.set_page_config(page_title="SEO Striking Distance Analyzer", page_icon="🔍", layout="wide")
@@ -30,6 +32,17 @@ use_dataforseo = st.sidebar.checkbox(
 if use_dataforseo:
     st.sidebar.info("💡 Ensure DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD are set in Streamlit secrets")
     st.sidebar.caption("⚡ Keywords are batched in groups of 1,000 for cost efficiency")
+
+st.sidebar.subheader("🤖 AI-Powered Analysis")
+use_ai_analysis = st.sidebar.checkbox(
+    "Enable AI Semantic Analysis",
+    value=False,
+    help="Use tiered AI models to score keyword relevancy (Gemini Flash → GPT-4o → Claude Sonnet 4.5)"
+)
+
+if use_ai_analysis:
+    st.sidebar.info("💡 Ensure OPENAI_API_KEY, ANTHROPIC_API_KEY, and GOOGLE_AI_API_KEY are set in secrets")
+    st.sidebar.caption("⚡ Tiered analysis: Gemini filters → GPT-4o scores → Claude deep analysis on top 20%")
 
 # File uploads
 st.subheader("📁 Data Sources")
@@ -272,6 +285,88 @@ if using_standard or using_multi_source:
                             st.error(f"❌ DataForSEO enrichment error: {str(e)}")
                             st.warning("⚠️ Continuing without enrichment...")
 
+                    # AI Semantic Analysis if enabled
+                    if use_ai_analysis and len(results) > 0:
+                        status_text.text("🤖 Running AI semantic analysis...")
+                        progress_bar.progress(85)
+
+                        try:
+                            analyzer = AIAnalyzer()
+
+                            # Extract topics and score keywords per URL
+                            ai_scores = []
+                            urls_processed = results['url'].unique()
+
+                            st.info(f"🔬 Analyzing {len(urls_processed)} URLs with AI...")
+
+                            for url in urls_processed:
+                                # Get URL data
+                                url_data = meta_df[meta_df[meta_columns['url']] == url].iloc[0]
+                                url_keywords = results[results['url'] == url]['query'].tolist()
+
+                                # Extract URL topic from scraped content
+                                scraped_content = scraped_data.get(url, {})
+                                content_snippet = scraped_content.get('content', '')[:500] if scraped_content else ''
+
+                                url_topic = analyzer.extract_url_topic(
+                                    url=url,
+                                    title=url_data[meta_columns['title']],
+                                    h1=url_data.get(meta_columns.get('h1'), ''),
+                                    content_snippet=content_snippet,
+                                    model="gpt-4o"  # Use GPT-4o for topic extraction
+                                )
+
+                                # Run tiered analysis on keywords
+                                keyword_analysis = analyzer.tiered_analysis(
+                                    keywords=url_keywords,
+                                    url_topic=url_topic,
+                                    show_progress=False
+                                )
+
+                                # Add scores to results
+                                for keyword, analysis_data in keyword_analysis.items():
+                                    ai_scores.append({
+                                        'url': url,
+                                        'query': keyword,
+                                        'ai_relevancy_score': analysis_data['relevancy_score'],
+                                        'ai_tier': analysis_data['tier'],
+                                        'ai_confidence': analysis_data['confidence']
+                                    })
+
+                            # Merge AI scores into results
+                            ai_df = pd.DataFrame(ai_scores)
+                            results = results.merge(ai_df, on=['url', 'query'], how='left')
+
+                            st.info(f"✓ AI analysis complete: {len(ai_scores)} keywords scored")
+
+                        except Exception as e:
+                            st.warning(f"⚠️ AI analysis error: {str(e)}")
+                            st.info("Ensure OPENAI_API_KEY, ANTHROPIC_API_KEY, and GOOGLE_AI_API_KEY are set in secrets")
+                            st.warning("⚠️ Continuing without AI analysis...")
+
+                    # Calculate SEO Value Scores (Smart Prioritization)
+                    if len(results) > 0:
+                        status_text.text("🎯 Calculating SEO Value Scores...")
+                        progress_bar.progress(95)
+
+                        try:
+                            # Initialize prioritization engine with custom weights
+                            # Relevancy: 0.40, Traffic: 0.35, Ranking: 0.25
+                            engine = PrioritizationEngine(
+                                relevancy_weight=0.40,
+                                traffic_weight=0.35,
+                                ranking_weight=0.25
+                            )
+
+                            # Add prioritization scores
+                            results = engine.prioritize_dataframe(results)
+
+                            st.info(f"✓ SEO Value Scores calculated for {len(results)} opportunities")
+
+                        except Exception as e:
+                            st.warning(f"⚠️ Prioritization error: {str(e)}")
+                            st.warning("⚠️ Continuing without prioritization scores...")
+
                     progress_bar.progress(100)
                     status_text.text("✅ Analysis complete!")
 
@@ -286,6 +381,29 @@ if using_standard or using_multi_source:
 
             # Display results
             st.subheader("📋 Results")
+
+            # Show top opportunities if SEO Value Scores are available
+            if 'seo_value_score' in results.columns:
+                st.markdown("### 🎯 Top 10 Priority Opportunities")
+                st.caption("Ranked by SEO Value Score (Relevancy: 40%, Traffic: 35%, Ranking: 25%)")
+
+                # Display top 10
+                top_10 = results.head(10)[['url', 'query', 'position', 'seo_value_score',
+                                           'relevancy_score', 'traffic_potential_score',
+                                           'ranking_opportunity_score']].copy()
+
+                # Format scores
+                if 'search_volume' in results.columns:
+                    top_10 = results.head(10)[['url', 'query', 'position', 'search_volume',
+                                               'keyword_difficulty', 'seo_value_score',
+                                               'relevancy_score', 'traffic_potential_score',
+                                               'ranking_opportunity_score']].copy()
+
+                st.dataframe(top_10, use_container_width=True)
+
+                st.markdown("---")
+
+            st.markdown("### 📊 All Results")
             st.dataframe(results, use_container_width=True)
 
             # Summary statistics
@@ -310,6 +428,38 @@ if using_standard or using_multi_source:
                 with col4:
                     total_volume = results['search_volume'].sum()
                     st.metric("Total Search Volume", f"{int(total_volume):,}")
+
+            # Prioritization insights
+            if 'seo_value_score' in results.columns:
+                st.subheader("🎯 Smart Prioritization Insights")
+                col1, col2, col3, col4 = st.columns(4)
+
+                with col1:
+                    avg_seo_score = results['seo_value_score'].mean()
+                    st.metric("Avg. SEO Value Score", f"{avg_seo_score:.1f}/100")
+                with col2:
+                    high_priority = len(results[results['seo_value_score'] >= 75])
+                    st.metric("High Priority (≥75)", f"{high_priority:,}")
+                with col3:
+                    medium_priority = len(results[(results['seo_value_score'] >= 50) & (results['seo_value_score'] < 75)])
+                    st.metric("Medium Priority (50-74)", f"{medium_priority:,}")
+                with col4:
+                    low_priority = len(results[results['seo_value_score'] < 50])
+                    st.metric("Low Priority (<50)", f"{low_priority:,}")
+
+                # Component score breakdown
+                st.markdown("#### 📊 Score Component Breakdown")
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    avg_relevancy = results['relevancy_score'].mean()
+                    st.metric("Avg. Relevancy Score", f"{avg_relevancy:.1f}/100", help="Weight: 40%")
+                with col2:
+                    avg_traffic = results['traffic_potential_score'].mean()
+                    st.metric("Avg. Traffic Potential", f"{avg_traffic:.1f}/100", help="Weight: 35%")
+                with col3:
+                    avg_ranking = results['ranking_opportunity_score'].mean()
+                    st.metric("Avg. Ranking Opportunity", f"{avg_ranking:.1f}/100", help="Weight: 25%")
 
             # Additional metrics for DataForSEO enriched data
             if use_dataforseo and 'search_volume' in results.columns:
