@@ -22,6 +22,22 @@ min_clicks = st.sidebar.slider("Minimum Clicks Threshold", 1, 5000, 10, 10)
 top_queries = st.sidebar.slider("Top Queries per URL", 1, 20, 5, 1)
 use_impressions_weighted = st.sidebar.checkbox("Use Impressions-Weighted Clicks", value=True)
 
+# Branded terms exclusion
+st.sidebar.markdown("**🏷️ Branded Terms Exclusion**")
+branded_terms_input = st.sidebar.text_input(
+    "Branded terms (comma-separated)",
+    value="",
+    placeholder="e.g., your brand, company name, product",
+    help="Exclude queries containing these terms. Case-insensitive, comma-separated."
+)
+
+# Parse branded terms
+if branded_terms_input.strip():
+    branded_terms = [term.strip().lower() for term in branded_terms_input.split(',') if term.strip()]
+    st.sidebar.caption(f"🚫 Excluding {len(branded_terms)} branded term(s)")
+else:
+    branded_terms = []
+
 st.sidebar.subheader("🚀 Data Enrichment")
 use_dataforseo = st.sidebar.checkbox(
     "Enrich with DataForSEO",
@@ -256,6 +272,22 @@ if using_standard or using_multi_source:
                 st.stop()
 
             st.success("✅ Data loaded and standardized successfully!")
+
+            # Filter out branded terms if specified
+            if branded_terms:
+                initial_count = len(organic_df)
+                query_col = organic_columns['query']
+
+                # Filter out queries containing any branded term (case-insensitive)
+                def contains_branded_term(query):
+                    query_lower = str(query).lower()
+                    return any(branded_term in query_lower for branded_term in branded_terms)
+
+                organic_df = organic_df[~organic_df[query_col].apply(contains_branded_term)]
+                excluded_count = initial_count - len(organic_df)
+
+                if excluded_count > 0:
+                    st.info(f"🚫 Excluded {excluded_count:,} branded queries from analysis ({len(organic_df):,} remaining)")
 
             # Show detected columns in expander
             with st.expander("🔍 View Detected Columns"):
