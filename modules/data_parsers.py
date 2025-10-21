@@ -1,0 +1,420 @@
+"""
+Multi-Source Data Parsers
+
+Supports parsing keyword data from:
+- Ahrefs (v1 and v2 exports)
+- Semrush
+- Google Search Console
+- Screaming Frog crawls
+
+Provides a unified data model for all sources.
+"""
+
+import pandas as pd
+from typing import Dict, List, Optional, Tuple
+import re
+
+
+class DataParser:
+    """Unified parser for multiple SEO data sources."""
+
+    # Unified column names for standardization
+    STANDARD_COLUMNS = {
+        'url': 'url',
+        'query': 'query',
+        'keyword': 'query',  # Alias
+        'position': 'position',
+        'clicks': 'clicks',
+        'impressions': 'impressions',
+        'search_volume': 'search_volume',
+        'keyword_difficulty': 'keyword_difficulty',
+        'cpc': 'cpc',
+        'traffic': 'traffic',
+        'title': 'title',
+        'h1': 'h1',
+        'h2': 'h2',
+        'meta_description': 'meta_description'
+    }
+
+    @staticmethod
+    def detect_source(df: pd.DataFrame) -> str:
+        """Detect which tool the data export came from.
+
+        Args:
+            df: DataFrame to analyze
+
+        Returns:
+            Source identifier: 'ahrefs', 'semrush', 'gsc', 'screaming_frog', 'unknown'
+        """
+        columns = [col.lower().strip() for col in df.columns]
+
+        # Ahrefs signatures
+        ahrefs_signatures = ['volume', 'keyword difficulty', 'cpc', 'parent topic']
+        if any('ahrefs' in col for col in columns) or \
+           sum(1 for sig in ahrefs_signatures if any(sig in col for col in columns)) >= 2:
+            return 'ahrefs'
+
+        # Semrush signatures
+        semrush_signatures = ['kd %', 'search intent', 'serp features', 'number of results']
+        if any('semrush' in col for col in columns) or \
+           sum(1 for sig in semrush_signatures if any(sig in col for col in columns)) >= 2:
+            return 'semrush'
+
+        # Google Search Console signatures
+        gsc_signatures = ['landing page', 'query', 'clicks', 'impressions']
+        if all(any(sig in col for col in columns) for sig in gsc_signatures):
+            return 'gsc'
+
+        # Screaming Frog signatures
+        sf_signatures = ['address', 'indexability', 'status code', 'title 1']
+        if sum(1 for sig in sf_signatures if any(sig in col for col in columns)) >= 3:
+            return 'screaming_frog'
+
+        return 'unknown'
+
+    @staticmethod
+    def parse_ahrefs_keywords(df: pd.DataFrame) -> pd.DataFrame:
+        """Parse Ahrefs keyword export (v1 or v2).
+
+        Expected columns (flexible):
+        - Keyword / Query
+        - URL / Current URL
+        - Volume / Search Volume
+        - Position / Ranking
+        - Keyword Difficulty / KD
+        - CPC
+        - Traffic
+
+        Returns:
+            Standardized DataFrame
+        """
+        # Create column mapping
+        column_map = {}
+
+        columns_lower = {col: col.lower().strip() for col in df.columns}
+
+        # Map URL column
+        for original_col, lower_col in columns_lower.items():
+            if 'current url' in lower_col or lower_col == 'url':
+                column_map[original_col] = 'url'
+                break
+
+        # Map keyword column
+        for original_col, lower_col in columns_lower.items():
+            if lower_col in ['keyword', 'query', 'keywords']:
+                column_map[original_col] = 'query'
+                break
+
+        # Map volume column
+        for original_col, lower_col in columns_lower.items():
+            if 'volume' in lower_col or 'search volume' in lower_col:
+                column_map[original_col] = 'search_volume'
+                break
+
+        # Map position column
+        for original_col, lower_col in columns_lower.items():
+            if 'position' in lower_col or 'ranking' in lower_col or lower_col == 'pos':
+                column_map[original_col] = 'position'
+                break
+
+        # Map keyword difficulty
+        for original_col, lower_col in columns_lower.items():
+            if 'keyword difficulty' in lower_col or lower_col == 'kd':
+                column_map[original_col] = 'keyword_difficulty'
+                break
+
+        # Map CPC
+        for original_col, lower_col in columns_lower.items():
+            if lower_col == 'cpc':
+                column_map[original_col] = 'cpc'
+                break
+
+        # Map traffic
+        for original_col, lower_col in columns_lower.items():
+            if lower_col == 'traffic':
+                column_map[original_col] = 'traffic'
+                break
+
+        # Rename columns
+        standardized_df = df.rename(columns=column_map)
+
+        # Clean volume column if it has "0-10" string values (Ahrefs v1)
+        if 'search_volume' in standardized_df.columns:
+            if standardized_df['search_volume'].dtype == 'object':
+                standardized_df['search_volume'] = standardized_df['search_volume'].astype(str).str.replace('0-10', '5')
+                standardized_df['search_volume'] = pd.to_numeric(standardized_df['search_volume'], errors='coerce').fillna(0).astype(int)
+
+        return standardized_df
+
+    @staticmethod
+    def parse_semrush_keywords(df: pd.DataFrame) -> pd.DataFrame:
+        """Parse Semrush keyword export.
+
+        Expected columns (flexible):
+        - Keyword
+        - URL
+        - Position
+        - Search Volume
+        - KD %
+        - CPC
+        - Traffic
+
+        Returns:
+            Standardized DataFrame
+        """
+        column_map = {}
+        columns_lower = {col: col.lower().strip() for col in df.columns}
+
+        # Map URL
+        for original_col, lower_col in columns_lower.items():
+            if lower_col in ['url', 'landing page']:
+                column_map[original_col] = 'url'
+                break
+
+        # Map keyword
+        for original_col, lower_col in columns_lower.items():
+            if lower_col in ['keyword', 'query', 'keywords']:
+                column_map[original_col] = 'query'
+                break
+
+        # Map position
+        for original_col, lower_col in columns_lower.items():
+            if 'position' in lower_col or 'ranking' in lower_col:
+                column_map[original_col] = 'position'
+                break
+
+        # Map search volume
+        for original_col, lower_col in columns_lower.items():
+            if 'search volume' in lower_col or lower_col == 'volume':
+                column_map[original_col] = 'search_volume'
+                break
+
+        # Map keyword difficulty (KD %)
+        for original_col, lower_col in columns_lower.items():
+            if 'kd %' in lower_col or 'keyword difficulty' in lower_col:
+                column_map[original_col] = 'keyword_difficulty'
+                break
+
+        # Map CPC
+        for original_col, lower_col in columns_lower.items():
+            if lower_col == 'cpc' or 'cpc (usd)' in lower_col:
+                column_map[original_col] = 'cpc'
+                break
+
+        # Map traffic
+        for original_col, lower_col in columns_lower.items():
+            if lower_col == 'traffic':
+                column_map[original_col] = 'traffic'
+                break
+
+        standardized_df = df.rename(columns=column_map)
+
+        # Convert KD from percentage to 0-100 scale if needed
+        if 'keyword_difficulty' in standardized_df.columns:
+            # If values are like "15%", remove % and convert
+            if standardized_df['keyword_difficulty'].dtype == 'object':
+                standardized_df['keyword_difficulty'] = standardized_df['keyword_difficulty'].astype(str).str.replace('%', '')
+            standardized_df['keyword_difficulty'] = pd.to_numeric(standardized_df['keyword_difficulty'], errors='coerce').fillna(0).astype(int)
+
+        return standardized_df
+
+    @staticmethod
+    def parse_screaming_frog_crawl(df: pd.DataFrame) -> pd.DataFrame:
+        """Parse Screaming Frog crawl export.
+
+        Expected columns:
+        - Address (URL)
+        - Title 1
+        - H1-1
+        - H2-1, H2-2, etc.
+        - Meta Description 1
+        - Indexability
+
+        Returns:
+            Standardized DataFrame with meta tags
+        """
+        column_map = {}
+        columns_lower = {col: col.lower().strip() for col in df.columns}
+
+        # Map URL (Address in Screaming Frog)
+        for original_col, lower_col in columns_lower.items():
+            if lower_col == 'address':
+                column_map[original_col] = 'url'
+                break
+
+        # Map Title
+        for original_col, lower_col in columns_lower.items():
+            if 'title 1' in lower_col or lower_col == 'title':
+                column_map[original_col] = 'title'
+                break
+
+        # Map H1
+        for original_col, lower_col in columns_lower.items():
+            if 'h1-1' in lower_col or lower_col == 'h1':
+                column_map[original_col] = 'h1'
+                break
+
+        # Map Meta Description
+        for original_col, lower_col in columns_lower.items():
+            if 'meta description 1' in lower_col or lower_col == 'meta description':
+                column_map[original_col] = 'meta_description'
+                break
+
+        standardized_df = df.rename(columns=column_map)
+
+        # Filter to only indexable pages if Indexability column exists
+        if 'Indexability' in df.columns:
+            standardized_df = standardized_df[standardized_df['Indexability'] == 'Indexable'].copy()
+
+        # Collect all H2 columns
+        h2_columns = [col for col in df.columns if col.lower().startswith('h2-')]
+        if h2_columns:
+            # Combine all H2s into a single column
+            standardized_df['h2'] = df[h2_columns].apply(
+                lambda row: ' '.join(row.dropna().astype(str)), axis=1
+            )
+
+        return standardized_df
+
+    @staticmethod
+    def parse_gsc_export(df: pd.DataFrame) -> pd.DataFrame:
+        """Parse Google Search Console export.
+
+        Expected columns:
+        - Landing Page / URL
+        - Query
+        - Clicks
+        - Impressions
+        - Position / Average Position
+
+        Returns:
+            Standardized DataFrame
+        """
+        column_map = {}
+        columns_lower = {col: col.lower().strip() for col in df.columns}
+
+        # Map URL
+        for original_col, lower_col in columns_lower.items():
+            if 'landing page' in lower_col or lower_col == 'url':
+                column_map[original_col] = 'url'
+                break
+
+        # Map query
+        for original_col, lower_col in columns_lower.items():
+            if lower_col in ['query', 'queries', 'keyword']:
+                column_map[original_col] = 'query'
+                break
+
+        # Map clicks
+        for original_col, lower_col in columns_lower.items():
+            if lower_col == 'clicks':
+                column_map[original_col] = 'clicks'
+                break
+
+        # Map impressions
+        for original_col, lower_col in columns_lower.items():
+            if 'impression' in lower_col:
+                column_map[original_col] = 'impressions'
+                break
+
+        # Map position
+        for original_col, lower_col in columns_lower.items():
+            if 'position' in lower_col or 'avg. pos' in lower_col:
+                column_map[original_col] = 'position'
+                break
+
+        return df.rename(columns=column_map)
+
+    @staticmethod
+    def parse_auto(df: pd.DataFrame) -> Tuple[pd.DataFrame, str]:
+        """Automatically detect source and parse accordingly.
+
+        Args:
+            df: Raw DataFrame from any supported source
+
+        Returns:
+            Tuple of (standardized DataFrame, source name)
+        """
+        source = DataParser.detect_source(df)
+
+        if source == 'ahrefs':
+            return DataParser.parse_ahrefs_keywords(df), 'ahrefs'
+        elif source == 'semrush':
+            return DataParser.parse_semrush_keywords(df), 'semrush'
+        elif source == 'gsc':
+            return DataParser.parse_gsc_export(df), 'gsc'
+        elif source == 'screaming_frog':
+            return DataParser.parse_screaming_frog_crawl(df), 'screaming_frog'
+        else:
+            # Return as-is with unknown source
+            return df, 'unknown'
+
+    @staticmethod
+    def merge_keyword_sources(
+        gsc_df: Optional[pd.DataFrame] = None,
+        ahrefs_df: Optional[pd.DataFrame] = None,
+        semrush_df: Optional[pd.DataFrame] = None
+    ) -> pd.DataFrame:
+        """Merge keyword data from multiple sources.
+
+        Args:
+            gsc_df: Google Search Console data (optional)
+            ahrefs_df: Ahrefs keyword data (optional)
+            semrush_df: Semrush keyword data (optional)
+
+        Returns:
+            Merged DataFrame with best data from each source
+        """
+        all_dfs = []
+
+        # Add each source to the list if provided
+        if gsc_df is not None and len(gsc_df) > 0:
+            gsc_df['source'] = 'gsc'
+            all_dfs.append(gsc_df)
+
+        if ahrefs_df is not None and len(ahrefs_df) > 0:
+            ahrefs_df['source'] = 'ahrefs'
+            all_dfs.append(ahrefs_df)
+
+        if semrush_df is not None and len(semrush_df) > 0:
+            semrush_df['source'] = 'semrush'
+            all_dfs.append(semrush_df)
+
+        if not all_dfs:
+            return pd.DataFrame()
+
+        # Concatenate all sources
+        merged_df = pd.concat(all_dfs, ignore_index=True, sort=False)
+
+        # Remove duplicates, keeping the one with most data
+        # Priority: url + query combination
+        merged_df['data_completeness'] = merged_df.notna().sum(axis=1)
+
+        # Sort by completeness (descending) and drop duplicates
+        merged_df = merged_df.sort_values('data_completeness', ascending=False)
+        merged_df = merged_df.drop_duplicates(subset=['url', 'query'], keep='first')
+        merged_df = merged_df.drop('data_completeness', axis=1)
+
+        return merged_df
+
+
+# Convenience functions
+def load_and_parse(file_path: str) -> Tuple[pd.DataFrame, str]:
+    """Load a file and automatically parse it.
+
+    Args:
+        file_path: Path to CSV or Excel file
+
+    Returns:
+        Tuple of (standardized DataFrame, source name)
+    """
+    # Load file
+    if file_path.endswith('.csv'):
+        df = pd.read_csv(file_path)
+    elif file_path.endswith('.xlsx') or file_path.endswith('.xls'):
+        df = pd.read_excel(file_path)
+    else:
+        raise ValueError(f"Unsupported file format: {file_path}")
+
+    # Auto-parse
+    return DataParser.parse_auto(df)
