@@ -55,20 +55,35 @@ An AI-powered Streamlit application that intelligently analyzes and prioritizes 
 
 ## Usage
 
+### Standard Workflow (Recommended)
+
 1. **Prepare your data files:**
-   - **Meta Tags Report**: Excel (.xlsx) or CSV file containing URLs and their corresponding meta tags (Title, H1, H2s, Meta Description)
-   - **Organic Performance Report**: Google Search Console export as Excel (.xlsx) or CSV file with URLs, queries, clicks, impressions, and average position
+   - **Screaming Frog Export**: Crawl your site and export meta tags (URL, Title, H1, H2s, Meta Description)
+   - **Google Search Console Export**: Export performance report (URL, Query, Position, Clicks, Impressions)
 
 2. **Run the application:**
    ```bash
    streamlit run app.py
    ```
 
-3. **Upload your files** and configure the analysis parameters in the sidebar
+3. **Configure optional enrichment** (in sidebar):
+   - Enable **DataForSEO** for search volume & keyword difficulty
+   - Enable **AI Analysis** for semantic relevancy scoring
 
-4. **Click "🚀 Analyze Striking Distance"** to start the analysis
+4. **Upload both files** in the "Standard Upload" tab
 
-5. **Review results** and download the CSV export
+5. **Click "🚀 Analyze Striking Distance"** to start the analysis
+
+6. **Review results** and download the CSV export
+
+### Multi-Source Upload (Alternative)
+
+Use this when you:
+- Don't have GSC access but have Ahrefs/Semrush data
+- Want to merge data from multiple keyword sources
+- Have historical data from different tools
+
+**Note**: Ahrefs/Semrush don't provide clicks/impressions data. For best results, use Standard Upload with GSC + enable DataForSEO enrichment.
 
 ## Configuration Options
 

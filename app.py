@@ -76,35 +76,37 @@ tab1, tab2 = st.tabs(["🔄 Standard Upload", "🚀 Multi-Source Upload"])
 
 with tab1:
     st.markdown("### 📤 Standard Upload Mode")
-    st.info("⚠️ **Both files are required** - The app merges on-page data with ranking performance data")
+    st.success("💡 **Recommended**: Upload Screaming Frog + Google Search Console (both required)")
+    st.caption("✨ Tip: Enable DataForSEO enrichment in sidebar for search volume & keyword difficulty")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**📄 1. Meta Tags Report (Required)**")
-        st.caption("From: Screaming Frog or custom crawl")
+        st.markdown("**📄 1. Screaming Frog Export (Required)**")
         st.caption("Contains: URL, Title, H1, H2s, Meta Description")
+        st.caption("Provides: On-page SEO data")
         meta_file = st.file_uploader(
-            "Upload Meta Tags file",
+            "Upload Screaming Frog crawl",
             type=["xlsx", "csv"],
             key="meta_standard",
-            help="This provides the on-page SEO data (what's currently on your pages)"
+            help="Export from Screaming Frog with meta tags and on-page elements"
         )
 
     with col2:
-        st.markdown("**📊 2. Keyword Performance (Required)**")
-        st.caption("From: Google Search Console, Ahrefs, or Semrush")
+        st.markdown("**📊 2. Google Search Console (Required)**")
         st.caption("Contains: URL, Query, Position, Clicks, Impressions")
+        st.caption("Provides: Actual ranking performance data")
         organic_file = st.file_uploader(
-            "Upload Keyword Performance file",
+            "Upload GSC Performance Report",
             type=["xlsx", "csv"],
             key="organic_standard",
-            help="This provides ranking performance data (which keywords are ranking for your URLs)"
+            help="Export from GSC with keyword performance data (clicks, impressions, position)"
         )
 
 with tab2:
     st.markdown("### 🚀 Multi-Source Upload Mode")
-    st.info("💡 Upload 1+ keyword sources (they'll be auto-merged). Meta tags file is optional but recommended for better analysis.")
+    st.info("💡 **Use this when**: You don't have GSC access, want to merge multiple sources, or only have Ahrefs/Semrush data")
+    st.warning("⚠️ Note: Ahrefs/Semrush don't provide clicks/impressions. For best results, use Standard Upload with GSC + DataForSEO enrichment")
 
     st.markdown("**📊 Keyword Sources** (Upload at least one)")
     col1, col2, col3 = st.columns(3)
