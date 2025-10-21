@@ -11,7 +11,43 @@ def load_data_file(file) -> pd.DataFrame:
         if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
             df = pd.read_excel(file, engine='openpyxl')
         elif file_name.endswith('.csv'):
-            df = pd.read_csv(file)
+            # Try reading CSV with more robust settings
+            try:
+                # First attempt: standard CSV with quoting
+                df = pd.read_csv(
+                    file,
+                    encoding='utf-8',
+                    quotechar='"',
+                    skipinitialspace=True,
+                    on_bad_lines='skip',  # Skip malformed lines
+                    engine='python'  # More flexible than C engine
+                )
+            except Exception as e1:
+                # Second attempt: Try different encodings
+                file.seek(0)  # Reset file pointer
+                try:
+                    df = pd.read_csv(
+                        file,
+                        encoding='latin-1',
+                        quotechar='"',
+                        skipinitialspace=True,
+                        on_bad_lines='skip',
+                        engine='python'
+                    )
+                except Exception as e2:
+                    # Third attempt: Try tab-separated
+                    file.seek(0)
+                    try:
+                        df = pd.read_csv(
+                            file,
+                            sep='\t',
+                            encoding='utf-8',
+                            on_bad_lines='skip',
+                            engine='python'
+                        )
+                    except Exception as e3:
+                        # Give up and raise original error
+                        raise ValueError(f"Could not parse CSV file. Tried multiple formats. Original error: {str(e1)}")
         else:
             raise ValueError("Unsupported file format. Please upload .xlsx, .xls, or .csv files.")
 
