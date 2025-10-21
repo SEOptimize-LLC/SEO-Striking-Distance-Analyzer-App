@@ -306,12 +306,16 @@ if using_standard or using_multi_source:
 
             if missing_meta:
                 st.error(f"❌ Missing required columns in meta file: {', '.join(missing_meta)}")
-                st.info("💡 Please ensure your file is a valid Screaming Frog export or contains: URL, Title, H1, Meta Description")
+                st.error(f"📋 Columns found in file: {', '.join(meta_df.columns.tolist())}")
+                st.error(f"🔍 Detected source: {meta_source}")
+                st.info("💡 For Screaming Frog: Export should include 'Address', 'Title 1', 'H1-1', 'Meta Description 1'")
                 st.stop()
 
             if missing_organic:
                 st.error(f"❌ Missing required columns in keyword file: {', '.join(missing_organic)}")
-                st.info("💡 Please ensure your file is a valid GSC export or contains: URL, Query, Position, Clicks, Impressions")
+                st.error(f"📋 Columns found in file: {', '.join(organic_df.columns.tolist())}")
+                st.error(f"🔍 Detected source: {organic_source}")
+                st.info("💡 For GSC: Export should include 'Landing Page', 'Query', 'Clicks', 'Impressions', 'Average Position'")
                 st.stop()
 
             st.success("✅ Data loaded and standardized successfully!")
