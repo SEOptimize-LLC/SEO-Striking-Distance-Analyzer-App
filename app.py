@@ -68,18 +68,41 @@ if use_ai_analysis:
         help="Choose your AI analysis strategy. Tiered is most cost-effective."
     )
 
-    # Show relevant API key requirements
+    # Check which API keys are available
+    has_openai = "OPENAI_API_KEY" in st.secrets
+    has_anthropic = "ANTHROPIC_API_KEY" in st.secrets
+    has_google = "GOOGLE_AI_API_KEY" in st.secrets
+
+    # Show API key status based on selected model
+    st.sidebar.markdown("**🔑 API Key Status:**")
+
     if "Tiered" in ai_model_option:
-        st.sidebar.info("💡 Requires: OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_AI_API_KEY")
+        # Tiered needs all three
+        st.sidebar.markdown(f"{'✅' if has_google else '❌'} Google AI (Gemini)")
+        st.sidebar.markdown(f"{'✅' if has_openai else '❌'} OpenAI (GPT-4o)")
+        st.sidebar.markdown(f"{'✅' if has_anthropic else '❌'} Anthropic (Claude)")
+
+        if not (has_openai and has_anthropic and has_google):
+            st.sidebar.error("⚠️ Missing API keys - add them in Streamlit secrets")
+
         st.sidebar.caption("⚡ Most cost-effective: Gemini filters → GPT-4o scores → Claude deep analysis on top 20%")
+
     elif "Gemini" in ai_model_option:
-        st.sidebar.info("💡 Requires: GOOGLE_AI_API_KEY")
+        st.sidebar.markdown(f"{'✅' if has_google else '❌'} Google AI (Gemini)")
+        if not has_google:
+            st.sidebar.error("⚠️ Add GOOGLE_AI_API_KEY to Streamlit secrets")
         st.sidebar.caption("⚡ Fastest & cheapest option (~$0.075/M tokens)")
+
     elif "GPT-4o" in ai_model_option:
-        st.sidebar.info("💡 Requires: OPENAI_API_KEY")
+        st.sidebar.markdown(f"{'✅' if has_openai else '❌'} OpenAI (GPT-4o)")
+        if not has_openai:
+            st.sidebar.error("⚠️ Add OPENAI_API_KEY to Streamlit secrets")
         st.sidebar.caption("⚡ Balanced cost & quality ($2.50/M input)")
+
     elif "Claude" in ai_model_option:
-        st.sidebar.info("💡 Requires: ANTHROPIC_API_KEY")
+        st.sidebar.markdown(f"{'✅' if has_anthropic else '❌'} Anthropic (Claude)")
+        if not has_anthropic:
+            st.sidebar.error("⚠️ Add ANTHROPIC_API_KEY to Streamlit secrets")
         st.sidebar.caption("⚡ Highest quality analysis ($3/M input)")
 else:
     ai_model_option = None
