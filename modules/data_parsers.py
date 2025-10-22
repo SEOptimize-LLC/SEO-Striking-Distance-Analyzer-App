@@ -286,50 +286,61 @@ class DataParser:
     def parse_gsc_export(df: pd.DataFrame) -> pd.DataFrame:
         """Parse Google Search Console export.
 
-        Expected columns:
-        - Landing Page / URL
-        - Query
+        Expected columns (case-insensitive):
+        - Landing Page / Page / URL / Address
+        - Query / Keyword / Top queries
         - Clicks
         - Impressions
-        - Position / Average Position
+        - Avg. Pos / Average Position / Position / Avg Position
 
         Returns:
             Standardized DataFrame
         """
         column_map = {}
-        columns_lower = {col: col.lower().strip() for col in df.columns}
 
-        # Map URL
-        for original_col, lower_col in columns_lower.items():
-            if 'landing page' in lower_col or lower_col == 'url':
-                column_map[original_col] = 'url'
+        # Create mapping of lowercase column to original column for easier matching
+        col_lower_to_original = {col.lower().strip(): col for col in df.columns}
+
+        # Map URL - try multiple variations
+        url_variations = ['landing page', 'page', 'url', 'address', 'top pages']
+        for variant in url_variations:
+            if variant in col_lower_to_original:
+                column_map[col_lower_to_original[variant]] = 'url'
                 break
 
-        # Map query
-        for original_col, lower_col in columns_lower.items():
-            if lower_col in ['query', 'queries', 'keyword']:
-                column_map[original_col] = 'query'
+        # Map query - try multiple variations
+        query_variations = ['query', 'queries', 'keyword', 'keywords', 'top queries', 'search query']
+        for variant in query_variations:
+            if variant in col_lower_to_original:
+                column_map[col_lower_to_original[variant]] = 'query'
                 break
 
-        # Map clicks
-        for original_col, lower_col in columns_lower.items():
-            if lower_col == 'clicks':
-                column_map[original_col] = 'clicks'
-                break
+        # Map clicks - exact match
+        if 'clicks' in col_lower_to_original:
+            column_map[col_lower_to_original['clicks']] = 'clicks'
 
         # Map impressions
-        for original_col, lower_col in columns_lower.items():
-            if 'impression' in lower_col:
-                column_map[original_col] = 'impressions'
+        impressions_variations = ['impressions', 'impression', 'impr']
+        for variant in impressions_variations:
+            if variant in col_lower_to_original:
+                column_map[col_lower_to_original[variant]] = 'impressions'
                 break
 
-        # Map position
-        for original_col, lower_col in columns_lower.items():
-            if 'position' in lower_col or 'avg. pos' in lower_col:
-                column_map[original_col] = 'position'
+        # Map position - try multiple variations including with periods
+        position_variations = ['avg. pos', 'avg.pos', 'avg pos', 'average position', 'position', 'avg position']
+        for variant in position_variations:
+            if variant in col_lower_to_original:
+                column_map[col_lower_to_original[variant]] = 'position'
                 break
 
-        return df.rename(columns=column_map)
+        # Rename columns
+        standardized_df = df.rename(columns=column_map)
+
+        # Keep only standardized columns (drop unmapped columns)
+        standard_cols = ['url', 'query', 'clicks', 'impressions', 'position']
+        available_cols = [col for col in standard_cols if col in standardized_df.columns]
+
+        return standardized_df[available_cols]
 
     @staticmethod
     def parse_auto(df: pd.DataFrame) -> Tuple[pd.DataFrame, str]:
