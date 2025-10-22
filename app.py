@@ -203,6 +203,9 @@ if using_standard or using_multi_source:
                 # Load meta file
                 try:
                     meta_df_raw = load_data_file(meta_file)
+                    st.info(f"✓ Raw file loaded: {len(meta_df_raw)} rows, {len(meta_df_raw.columns)} columns")
+                    st.info(f"📋 Raw columns: {', '.join(meta_df_raw.columns.tolist())}")
+
                     meta_df, meta_source = DataParser.parse_auto(meta_df_raw)
                     st.info(f"✓ Meta tags file loaded ({meta_source}): {len(meta_df)} rows")
                 except Exception as e:
@@ -212,6 +215,9 @@ if using_standard or using_multi_source:
                 # Load organic file with auto-detection
                 try:
                     organic_df_raw = load_data_file(organic_file)
+                    st.info(f"✓ Raw file loaded: {len(organic_df_raw)} rows, {len(organic_df_raw.columns)} columns")
+                    st.info(f"📋 Raw columns: {', '.join(organic_df_raw.columns.tolist())}")
+
                     organic_df, organic_source = DataParser.parse_auto(organic_df_raw)
                     st.info(f"✓ Keyword data loaded ({organic_source}): {len(organic_df)} rows")
                 except Exception as e:
