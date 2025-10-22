@@ -67,6 +67,16 @@ def load_data_file(file) -> pd.DataFrame:
         else:
             raise ValueError("Unsupported file format. Please upload .xlsx, .xls, or .csv files.")
 
+        # Clean up the dataframe
+        # 1. Strip BOM (Byte Order Mark) from column names
+        df.columns = df.columns.str.replace('^\ufeff', '', regex=True)
+
+        # 2. Drop completely empty columns (Unnamed columns with no data)
+        df = df.dropna(axis=1, how='all')
+
+        # 3. Drop columns that are just "Unnamed: X"
+        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+
         return df
     except Exception as e:
         raise ValueError(f"Error loading file: {str(e)}")
