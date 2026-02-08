@@ -161,30 +161,63 @@ class DataForSEOClient:
         try:
             tasks = response_data.get("tasks", [])
 
+            if not tasks:
+                print("⚠️ No tasks in DataForSEO response")
+                return results
+
             for task in tasks:
-                if task.get("status_code") != 20000:
+                task_status = task.get("status_code")
+                if task_status != 20000:
+                    print(f"⚠️ Task status code: {task_status}, message: {task.get('status_message', 'N/A')}")
                     continue
 
                 task_result = task.get("result", [])
 
-                for result in task_result:
-                    keyword_data = result.get("keyword_data", {})
+                if not task_result:
+                    print("⚠️ Empty result array in task")
+                    continue
+
+                print(f"✓ Processing {len(task_result)} keywords from DataForSEO response")
+
+                for idx, result in enumerate(task_result):
                     keyword = result.get("keyword", "")
 
-                    if keyword:
-                        results[keyword.lower()] = {
-                            "keyword": keyword,
-                            "search_volume": keyword_data.get("keyword_info", {}).get("search_volume", 0),
-                            "competition": keyword_data.get("keyword_info", {}).get("competition", 0),
-                            "cpc": keyword_data.get("keyword_info", {}).get("cpc", 0),
-                            # Map competition (0-1) to keyword difficulty (0-100)
-                            "keyword_difficulty": int(keyword_data.get("keyword_info", {}).get("competition", 0) * 100),
-                            "monthly_searches": keyword_data.get("keyword_info", {}).get("monthly_searches", [])
-                        }
+                    if not keyword:
+                        continue
+
+                    # DataForSEO API structure: result has direct properties
+                    # search_volume, competition, cpc are at the root level
+                    search_volume = result.get("search_volume", 0)
+                    competition = result.get("competition", 0)
+                    cpc = result.get("cpc", 0)
+
+                    # Some responses have keyword_info nested, handle both
+                    if search_volume == 0:
+                        keyword_info = result.get("keyword_info", {})
+                        search_volume = keyword_info.get("search_volume", 0)
+                        competition = keyword_info.get("competition", 0)
+                        cpc = keyword_info.get("cpc", 0)
+
+                    results[keyword.lower()] = {
+                        "keyword": keyword,
+                        "search_volume": search_volume if search_volume else 0,
+                        "competition": competition if competition else 0,
+                        "cpc": cpc if cpc else 0,
+                        # Map competition (0-1) to keyword difficulty (0-100)
+                        "keyword_difficulty": int(competition * 100) if competition else 0,
+                        "monthly_searches": result.get("monthly_searches", [])
+                    }
+
+                    # Debug first few keywords
+                    if idx < 3:
+                        print(f"  Sample {idx+1}: '{keyword}' -> Volume: {search_volume}, KD: {int(competition * 100)}")
 
         except Exception as e:
+            import traceback
             print(f"⚠️ Error parsing DataForSEO response: {str(e)}")
+            print(f"Traceback: {traceback.format_exc()}")
 
+        print(f"✓ Parsed {len(results)} keywords from response")
         return results
 
     def get_keyword_metrics(

@@ -551,14 +551,35 @@ if using_standard or using_multi_source or using_gsc:
                         progress_bar.progress(75)
 
                         try:
+                            st.info("📡 Connecting to DataForSEO API...")
                             client = DataForSEOClient()
+
+                            # Get unique keywords before enrichment
+                            unique_keywords = results['query'].nunique()
+                            st.info(f"🔍 Fetching metrics for {unique_keywords} unique keywords...")
+
+                            # Enrich the dataframe
                             results = client.enrich_dataframe(results, keyword_column='query')
-                            st.info(f"✓ Enriched {len(results)} keywords with search volume and KD scores")
+
+                            # Count how many were successfully enriched
+                            enriched_count = results[results['search_volume'] > 0].shape[0]
+                            st.success(f"✓ Successfully enriched {enriched_count}/{len(results)} keywords with DataForSEO")
+
+                            # Show sample if successful
+                            if enriched_count > 0:
+                                sample = results[results['search_volume'] > 0][['query', 'search_volume', 'keyword_difficulty']].head(3)
+                                st.info("Sample enriched keywords:")
+                                st.dataframe(sample, use_container_width=True)
+                            else:
+                                st.warning("⚠️ No keywords were enriched. Check DataForSEO API response.")
+
                         except ValueError as e:
                             st.warning(f"⚠️ DataForSEO credentials not found: {str(e)}")
                             st.info("Add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD to Streamlit secrets to enable enrichment")
                         except Exception as e:
                             st.error(f"❌ DataForSEO enrichment error: {str(e)}")
+                            import traceback
+                            st.error(f"Error details: {traceback.format_exc()}")
                             st.warning("⚠️ Continuing without enrichment...")
 
                     # AI Semantic Analysis if enabled
@@ -794,13 +815,22 @@ if using_standard or using_multi_source or using_gsc:
                     ]
                     st.metric("High-Value Opportunities", f"{len(high_value):,}")
 
-            # Download results
-            csv = results.to_csv(index=False)
+            # Download results (filtered columns)
+            # Remove "fluff" score columns from export
+            columns_to_remove = [
+                'score', 'ai_relevancy_score', 'ai_tier', 'ai_confidence',
+                'relevancy_score', 'traffic_potential_score',
+                'ranking_opportunity_score', 'seo_value_score'
+            ]
+            export_columns = [col for col in results.columns if col not in columns_to_remove]
+            csv = results[export_columns].to_csv(index=False)
+
             st.download_button(
                 label="📥 Download Results as CSV",
                 data=csv,
                 file_name="striking_distance_results.csv",
-                mime="text/csv"
+                mime="text/csv",
+                key="download_csv_button"
             )
 
             # Optimization Recommendations Section
@@ -831,7 +861,7 @@ if using_standard or using_multi_source or using_gsc:
                 help="Select URLs where you want AI-powered optimization recommendations"
             )
 
-            if selected_urls and st.button("🚀 Generate Optimization Plans", type="primary"):
+            if selected_urls and st.button("🚀 Generate Optimization Plans", type="primary", key="generate_optimization_button"):
                 with st.spinner("Generating AI-powered recommendations... This may take a few minutes."):
                     try:
                         # Initialize generator
@@ -1011,7 +1041,8 @@ if using_standard or using_multi_source or using_gsc:
                     data=json_export,
                     file_name=f"optimization_reports_{datetime.now().strftime('%Y%m%d')}.json",
                     mime="application/json",
-                    help="Download all optimization reports in JSON format"
+                    help="Download all optimization reports in JSON format",
+                    key="download_json_button"
                 )
 
     except Exception as e:

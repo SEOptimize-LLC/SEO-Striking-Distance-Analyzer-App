@@ -5,12 +5,12 @@ import re
 from typing import Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
-def scrape_urls(urls: List[str], timeout: int = 10, delay: float = 1.0) -> Dict[str, str]:
+def scrape_urls(urls: List[str], timeout: int = 15, delay: float = 1.0) -> Dict[str, str]:
     """Scrape main content from a list of URLs.
 
     Args:
         urls: List of URLs to scrape
-        timeout: Request timeout in seconds
+        timeout: Request timeout in seconds (increased default to 15s)
         delay: Delay between requests in seconds
 
     Returns:
@@ -21,35 +21,69 @@ def scrape_urls(urls: List[str], timeout: int = 10, delay: float = 1.0) -> Dict[
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
+        'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0',
     }
+
+    errors = []
 
     for i, url in enumerate(urls, 1):
         try:
-            print(f"Scraping {i}/{len(urls)}: {url}")
+            print(f"🔍 Scraping {i}/{len(urls)}: {url}")
+
+            # Validate URL format
+            if not url.startswith(('http://', 'https://')):
+                url = 'https://' + url
+
             content = scrape_single_url(url, headers, timeout)
-            scraped_data[url] = content
+
+            if content and len(content) > 100:  # At least 100 chars
+                scraped_data[url] = content
+                print(f"✅ Success! Scraped {len(content)} characters from {url}")
+            else:
+                scraped_data[url] = ""
+                errors.append(f"{url}: Content too short ({len(content)} chars)")
+                print(f"⚠️ Warning: Content too short for {url}")
 
             # Rate limiting - be a good citizen
             if i < len(urls):
                 time.sleep(delay)
 
         except requests.exceptions.Timeout:
-            print(f"⏱️ Timeout scraping {url} (>{timeout}s)")
+            error_msg = f"{url}: Timeout (>{timeout}s)"
+            errors.append(error_msg)
+            print(f"⏱️ {error_msg}")
             scraped_data[url] = ""
-        except requests.exceptions.ConnectionError:
-            print(f"🔌 Connection error for {url}")
+        except requests.exceptions.SSLError as e:
+            error_msg = f"{url}: SSL certificate error"
+            errors.append(error_msg)
+            print(f"🔒 {error_msg}")
+            scraped_data[url] = ""
+        except requests.exceptions.ConnectionError as e:
+            error_msg = f"{url}: Connection refused or DNS failure"
+            errors.append(error_msg)
+            print(f"🔌 {error_msg}")
             scraped_data[url] = ""
         except requests.exceptions.HTTPError as e:
-            print(f"❌ HTTP {e.response.status_code} error for {url}")
+            error_msg = f"{url}: HTTP {e.response.status_code}"
+            errors.append(error_msg)
+            print(f"❌ {error_msg}")
             scraped_data[url] = ""
         except Exception as e:
-            print(f"⚠️ Unexpected error scraping {url}: {str(e)}")
+            error_msg = f"{url}: {str(e)[:100]}"
+            errors.append(error_msg)
+            print(f"⚠️ Unexpected error: {error_msg}")
             scraped_data[url] = ""
 
-    successful = sum(1 for v in scraped_data.values() if v)
+    successful = sum(1 for v in scraped_data.values() if v and len(v) > 100)
     print(f"\n✅ Scraping complete: {successful}/{len(urls)} URLs successful")
+
+    if errors:
+        print(f"\n⚠️ Scraping errors encountered:")
+        for error in errors[:10]:  # Show first 10 errors
+            print(f"  - {error}")
 
     return scraped_data
 
