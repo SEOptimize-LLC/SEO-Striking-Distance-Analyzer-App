@@ -6,64 +6,112 @@ Provides tiered AI analysis for keyword relevancy scoring:
 - GPT-4o: Semantic scoring
 - Claude Sonnet 4.5: Deep analysis
 
-Optimized for cost efficiency and accuracy.
+Optimized for cost efficiency and accuracy via OpenRouter.
 """
 
 import streamlit as st
-from typing import List, Dict, Optional, Tuple
+import requests
+import json
+import re
 import time
-from anthropic import Anthropic
-import openai
-import google.generativeai as genai
+from typing import List, Dict, Optional
 
 
 class AIAnalyzer:
-    """Tiered AI analysis for keyword relevancy scoring."""
+    """Tiered AI analysis for keyword relevancy scoring via OpenRouter."""
 
-    def __init__(
-        self,
-        openai_key: Optional[str] = None,
-        anthropic_key: Optional[str] = None,
-        google_key: Optional[str] = None
-    ):
-        """Initialize AI clients with API keys from Streamlit secrets.
+    # OpenRouter API configuration
+    OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+    # Model mapping to OpenRouter identifiers
+    MODELS = {
+        "gemini-flash": "google/gemini-2.0-flash-exp:free",
+        "gpt-4o": "openai/gpt-4o",
+        "claude-sonnet-4": "anthropic/claude-sonnet-4.5"
+    }
+
+    def __init__(self, openrouter_key: Optional[str] = None):
+        """Initialize AI analyzer with OpenRouter API key.
 
         Args:
-            openai_key: OpenAI API key (optional, uses st.secrets if not provided)
-            anthropic_key: Anthropic API key (optional, uses st.secrets if not provided)
-            google_key: Google AI API key (optional, uses st.secrets if not provided)
+            openrouter_key: OpenRouter API key (optional, uses st.secrets if not provided)
         """
-        # Initialize OpenAI
-        if openai_key:
-            self.openai_client = openai.OpenAI(api_key=openai_key)
+        # Get API key from parameter or Streamlit secrets
+        if openrouter_key:
+            self.api_key = openrouter_key
         else:
             try:
-                self.openai_client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+                self.api_key = st.secrets["OPENROUTER_API_KEY"]
             except (KeyError, FileNotFoundError):
-                self.openai_client = None
+                raise ValueError(
+                    "OpenRouter API key not found. Please add OPENROUTER_API_KEY to Streamlit secrets."
+                )
 
-        # Initialize Anthropic
-        if anthropic_key:
-            self.anthropic_client = Anthropic(api_key=anthropic_key)
-        else:
-            try:
-                self.anthropic_client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-            except (KeyError, FileNotFoundError):
-                self.anthropic_client = None
-
-        # Initialize Google AI
-        if google_key:
-            genai.configure(api_key=google_key)
-            self.google_configured = True
-        else:
-            try:
-                genai.configure(api_key=st.secrets["GOOGLE_AI_API_KEY"])
-                self.google_configured = True
-            except (KeyError, FileNotFoundError):
-                self.google_configured = False
+        # Configure headers for OpenRouter API
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": st.secrets.get("app_url", "http://localhost:8501"),
+            "X-Title": "SEO Striking Distance Analyzer",
+            "Content-Type": "application/json"
+        }
 
         # Cache for topic extractions
         self.topic_cache: Dict[str, str] = {}
+
+    def _call_openrouter(
+        self,
+        model: str,
+        prompt: str,
+        max_tokens: int = 150,
+        temperature: float = 0.3
+    ) -> str:
+        """Make unified API call to OpenRouter.
+
+        Args:
+            model: Model identifier ('gemini-flash', 'gpt-4o', 'claude-sonnet-4')
+            prompt: The prompt to send
+            max_tokens: Maximum tokens in response
+            temperature: Temperature for generation (0.0-1.0)
+
+        Returns:
+            Model response text
+
+        Raises:
+            Exception: If API call fails
+        """
+        # Get OpenRouter model ID
+        model_id = self.MODELS.get(model, model)
+
+        try:
+            response = requests.post(
+                f"{self.OPENROUTER_BASE_URL}/chat/completions",
+                headers=self.headers,
+                json={
+                    "model": model_id,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature
+                },
+                timeout=60
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            return data["choices"][0]["message"]["content"].strip()
+
+        except requests.exceptions.Timeout:
+            raise Exception(f"OpenRouter API timeout for model {model}")
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"OpenRouter API HTTP error: {e.response.status_code}"
+            try:
+                error_data = e.response.json()
+                if "error" in error_data:
+                    error_msg += f" - {error_data['error'].get('message', '')}"
+            except:
+                pass
+            raise Exception(error_msg)
+        except Exception as e:
+            raise Exception(f"OpenRouter API error: {str(e)}")
 
     def extract_url_topic(
         self,
@@ -100,33 +148,12 @@ Content snippet: {content_snippet[:500]}
 Respond with ONLY the topic description, no preamble or explanation."""
 
         try:
-            if model == "claude-sonnet-4" and self.anthropic_client:
-                response = self.anthropic_client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=150,
-                    temperature=0.3,
-                    messages=[{
-                        "role": "user",
-                        "content": prompt
-                    }]
-                )
-                topic = response.content[0].text.strip()
-
-            elif model == "gpt-4o" and self.openai_client:
-                response = self.openai_client.chat.completions.create(
-                    model="gpt-4o",
-                    max_tokens=150,
-                    temperature=0.3,
-                    messages=[{
-                        "role": "user",
-                        "content": prompt
-                    }]
-                )
-                topic = response.choices[0].message.content.strip()
-
-            else:
-                # Fallback: create topic from title + H1
-                topic = f"{title}. {h1}" if h1 and h1 != title else title
+            topic = self._call_openrouter(
+                model=model,
+                prompt=prompt,
+                max_tokens=150,
+                temperature=0.3
+            )
 
             # Cache the result
             self.topic_cache[cache_key] = topic
@@ -134,7 +161,7 @@ Respond with ONLY the topic description, no preamble or explanation."""
 
         except Exception as e:
             print(f"⚠️ Error extracting topic for {url}: {str(e)}")
-            # Fallback
+            # Fallback: create topic from title + H1
             return f"{title}. {h1}" if h1 and h1 != title else title
 
     def score_keyword_relevancy(
@@ -168,55 +195,14 @@ Guidelines:
 Respond with ONLY the number (0-100), no explanation."""
 
         try:
-            if model == "gemini-flash" and self.google_configured:
-                model_obj = genai.GenerativeModel("gemini-2.0-flash-exp")
-                response = model_obj.generate_content(
-                    prompt,
-                    generation_config=genai.GenerationConfig(
-                        max_output_tokens=10,
-                        temperature=0.1
-                    )
-                )
-                score_text = response.text.strip()
-
-            elif model == "gpt-4o" and self.openai_client:
-                response = self.openai_client.chat.completions.create(
-                    model="gpt-4o",
-                    max_tokens=10,
-                    temperature=0.1,
-                    messages=[{
-                        "role": "user",
-                        "content": prompt
-                    }]
-                )
-                score_text = response.choices[0].message.content.strip()
-
-            elif model == "claude-sonnet-4" and self.anthropic_client:
-                response = self.anthropic_client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=10,
-                    temperature=0.1,
-                    messages=[{
-                        "role": "user",
-                        "content": prompt
-                    }]
-                )
-                score_text = response.content[0].text.strip()
-
-            else:
-                # Fallback: simple keyword matching
-                keyword_lower = keyword.lower()
-                topic_lower = url_topic.lower()
-
-                if keyword_lower in topic_lower:
-                    return 85
-                elif any(word in topic_lower for word in keyword_lower.split()):
-                    return 60
-                else:
-                    return 30
+            score_text = self._call_openrouter(
+                model=model,
+                prompt=prompt,
+                max_tokens=10,
+                temperature=0.1
+            )
 
             # Extract number from response
-            import re
             numbers = re.findall(r'\d+', score_text)
             if numbers:
                 score = int(numbers[0])
@@ -226,7 +212,16 @@ Respond with ONLY the number (0-100), no explanation."""
 
         except Exception as e:
             print(f"⚠️ Error scoring keyword '{keyword}': {str(e)}")
-            return 50  # Default fallback score
+            # Fallback: simple keyword matching
+            keyword_lower = keyword.lower()
+            topic_lower = url_topic.lower()
+
+            if keyword_lower in topic_lower:
+                return 85
+            elif any(word in topic_lower for word in keyword_lower.split()):
+                return 60
+            else:
+                return 30
 
     def batch_score_keywords(
         self,

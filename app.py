@@ -7,7 +7,16 @@ from modules.dataforseo import DataForSEOClient
 from modules.data_parsers import DataParser
 from modules.ai_analysis import AIAnalyzer
 from modules.prioritization import PrioritizationEngine
-import time
+from modules.gsc_connector import (
+    get_auth_url,
+    get_credentials_from_code,
+    save_credentials,
+    load_credentials,
+    get_search_console_service,
+    get_verified_sites,
+    fetch_striking_distance_data
+)
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="SEO Striking Distance Analyzer", page_icon="🔍", layout="wide")
 
@@ -68,50 +77,46 @@ if use_ai_analysis:
         help="Choose your AI analysis strategy. Tiered is most cost-effective."
     )
 
-    # Check which API keys are available (key exists AND has a value)
-    has_openai = "OPENAI_API_KEY" in st.secrets and st.secrets.get("OPENAI_API_KEY", "").strip()
-    has_anthropic = "ANTHROPIC_API_KEY" in st.secrets and st.secrets.get("ANTHROPIC_API_KEY", "").strip()
-    has_google = "GOOGLE_AI_API_KEY" in st.secrets and st.secrets.get("GOOGLE_AI_API_KEY", "").strip()
+    # Check OpenRouter API key
+    has_openrouter = "OPENROUTER_API_KEY" in st.secrets and st.secrets.get("OPENROUTER_API_KEY", "").strip()
 
-    # Show API key status based on selected model
+    # Show API key status
     st.sidebar.markdown("**🔑 API Key Status:**")
 
+    if has_openrouter:
+        st.sidebar.success("✅ OpenRouter connected")
+        st.sidebar.caption("🌐 Access to all models via single API key")
+    else:
+        st.sidebar.error("⚠️ Add OPENROUTER_API_KEY to Streamlit secrets")
+        st.sidebar.caption("Get your key at: https://openrouter.ai/keys")
+
+    # Model strategy info
     if "Tiered" in ai_model_option:
-        # Tiered needs all three
-        st.sidebar.markdown(f"{'✅' if has_google else '❌'} Google AI (Gemini)")
-        st.sidebar.markdown(f"{'✅' if has_openai else '❌'} OpenAI (GPT-4o)")
-        st.sidebar.markdown(f"{'✅' if has_anthropic else '❌'} Anthropic (Claude)")
-
-        if not (has_openai and has_anthropic and has_google):
-            st.sidebar.error("⚠️ Missing API keys - add them in Streamlit secrets")
-
         st.sidebar.caption("⚡ Most cost-effective: Gemini filters → GPT-4o scores → Claude deep analysis on top 20%")
-
     elif "Gemini" in ai_model_option:
-        st.sidebar.markdown(f"{'✅' if has_google else '❌'} Google AI (Gemini)")
-        if not has_google:
-            st.sidebar.error("⚠️ Add GOOGLE_AI_API_KEY to Streamlit secrets")
         st.sidebar.caption("⚡ Fastest & cheapest option (~$0.075/M tokens)")
-
     elif "GPT-4o" in ai_model_option:
-        st.sidebar.markdown(f"{'✅' if has_openai else '❌'} OpenAI (GPT-4o)")
-        if not has_openai:
-            st.sidebar.error("⚠️ Add OPENAI_API_KEY to Streamlit secrets")
         st.sidebar.caption("⚡ Balanced cost & quality ($2.50/M input)")
-
     elif "Claude" in ai_model_option:
-        st.sidebar.markdown(f"{'✅' if has_anthropic else '❌'} Anthropic (Claude)")
-        if not has_anthropic:
-            st.sidebar.error("⚠️ Add ANTHROPIC_API_KEY to Streamlit secrets")
         st.sidebar.caption("⚡ Highest quality analysis ($3/M input)")
 else:
     ai_model_option = None
+
+# Handle OAuth callback from Google
+auth_code = st.query_params.get("code")
+if auth_code and "gsc_credentials" not in st.session_state:
+    credentials = get_credentials_from_code(auth_code)
+    if credentials:
+        save_credentials(credentials)
+        st.query_params.clear()
+        st.success("✅ Successfully authenticated with Google!")
+        st.rerun()
 
 # File uploads
 st.subheader("📁 Data Sources")
 
 # Tabs for different data input methods
-tab1, tab2 = st.tabs(["🔄 Standard Upload", "🚀 Multi-Source Upload"])
+tab1, tab2, tab3 = st.tabs(["🔄 Standard Upload", "🚀 Multi-Source Upload", "🔗 Connect to GSC"])
 
 with tab1:
     st.markdown("### 📤 Standard Upload Mode")
@@ -190,16 +195,159 @@ with tab2:
         help="Provides on-page SEO data for more accurate keyword relevancy analysis"
     )
 
+with tab3:
+    st.markdown("### 🔗 Direct Google Search Console Connection")
+    st.success("💡 **Recommended**: Connect directly to GSC - no manual exports needed!")
+    st.caption("✨ Automatically fetch striking distance data with position filtering")
+
+    # Load existing credentials
+    credentials = load_credentials()
+
+    if not credentials:
+        # Show authentication UI
+        st.info("Please authenticate with Google to access your Search Console data.")
+        st.markdown("**Why connect?**")
+        st.markdown("- ✅ No manual CSV exports")
+        st.markdown("- ✅ Always up-to-date data")
+        st.markdown("- ✅ Position filtering at API level")
+        st.markdown("- ✅ Access all your verified properties")
+
+        if st.button("🔑 Sign in with Google", type="primary"):
+            auth_result = get_auth_url()
+            if auth_result:
+                auth_url, _ = auth_result
+                st.markdown(f"**Click here to authorize:** [🔗 Authorize with Google]({auth_url})")
+                st.info("After authorizing, you'll be redirected back to this app.")
+    else:
+        # Show connected state
+        service = get_search_console_service(credentials)
+
+        if service:
+            sites = get_verified_sites(service)
+
+            if sites:
+                st.success(f"✅ Connected! Found {len(sites)} verified site(s)")
+
+                # Site selection
+                selected_site = st.selectbox(
+                    "🌐 Select Website",
+                    sites,
+                    help="Choose which GSC property to analyze"
+                )
+
+                # Configuration
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    days_back = st.slider(
+                        "📅 Days of data",
+                        min_value=7,
+                        max_value=90,
+                        value=28,
+                        help="How many days back to fetch data"
+                    )
+
+                with col2:
+                    position_range = st.slider(
+                        "📊 Position range (striking distance)",
+                        min_value=1,
+                        max_value=100,
+                        value=(8, 20),
+                        help="Filter by average position range"
+                    )
+
+                min_clicks_gsc = st.slider(
+                    "Minimum Clicks Threshold",
+                    min_value=1,
+                    max_value=100,
+                    value=min_clicks,
+                    help="Only include queries with at least this many clicks"
+                )
+
+                # Also need Screaming Frog data
+                st.markdown("---")
+                st.markdown("**📄 Screaming Frog Export (Required)**")
+                st.caption("Upload your Screaming Frog crawl to complete the analysis")
+                meta_file_gsc = st.file_uploader(
+                    "Upload Screaming Frog crawl",
+                    type=["xlsx", "csv"],
+                    key="meta_gsc",
+                    help="Export from Screaming Frog with meta tags and on-page elements"
+                )
+
+                if st.button("📊 Fetch GSC Data & Analyze", type="primary") and meta_file_gsc:
+                    with st.spinner("Fetching data from Google Search Console..."):
+                        # Calculate date range
+                        end_date = datetime.now() - timedelta(days=1)
+                        start_date = end_date - timedelta(days=days_back)
+
+                        # Fetch data using connector
+                        organic_df = fetch_striking_distance_data(
+                            service=service,
+                            site_url=selected_site,
+                            start_date=start_date.strftime('%Y-%m-%d'),
+                            end_date=end_date.strftime('%Y-%m-%d'),
+                            min_position=position_range[0],
+                            max_position=position_range[1],
+                            min_clicks=min_clicks_gsc
+                        )
+
+                        if not organic_df.empty:
+                            st.success(f"✅ Fetched {len(organic_df)} URL-query combinations from GSC!")
+
+                            # Store in session state to continue with analysis
+                            st.session_state['gsc_data'] = organic_df
+                            st.session_state['gsc_meta_file'] = meta_file_gsc
+                            st.session_state['using_gsc'] = True
+
+                            st.info("📊 Data loaded! Scroll down to see the analysis results...")
+                        else:
+                            st.warning("No data found for the selected criteria. Try adjusting your filters.")
+
+                elif not meta_file_gsc:
+                    st.warning("⚠️ Please upload Screaming Frog data to continue")
+
+                # Disconnect option
+                st.markdown("---")
+                if st.button("🔓 Disconnect Google Account"):
+                    if "gsc_credentials" in st.session_state:
+                        del st.session_state["gsc_credentials"]
+                    st.rerun()
+            else:
+                st.error("No verified sites found in your Google Search Console account.")
+        else:
+            st.error("Failed to connect to Google Search Console. Please try reconnecting.")
+
 # Determine which mode we're in
+using_gsc = 'gsc_data' in st.session_state and 'gsc_meta_file' in st.session_state
 using_multi_source = any([gsc_file, ahrefs_file, semrush_file, meta_file_multi])
 using_standard = meta_file and organic_file
 
-if using_standard or using_multi_source:
+if using_standard or using_multi_source or using_gsc:
     try:
         with st.spinner("Loading and parsing data..."):
 
+            # GSC MODE: Direct API fetch + Screaming Frog upload
+            if using_gsc and not using_standard and not using_multi_source:
+                # Load GSC data from session state
+                organic_df = st.session_state['gsc_data']
+                organic_source = "Google Search Console (Direct API)"
+                st.info(f"✓ GSC data loaded from API: {len(organic_df)} rows")
+
+                # Load meta file from session state
+                try:
+                    meta_df_raw = load_data_file(st.session_state['gsc_meta_file'])
+                    st.info(f"✓ Raw file loaded: {len(meta_df_raw)} rows, {len(meta_df_raw.columns)} columns")
+                    st.info(f"📋 Raw columns: {', '.join(meta_df_raw.columns.tolist())}")
+
+                    meta_df, meta_source = DataParser.parse_auto(meta_df_raw)
+                    st.info(f"✓ Meta tags file loaded ({meta_source}): {len(meta_df)} rows")
+                except Exception as e:
+                    st.error(f"❌ Error loading meta tags file: {str(e)}")
+                    st.stop()
+
             # STANDARD MODE: Single meta file + single organic file
-            if using_standard and not using_multi_source:
+            elif using_standard and not using_multi_source:
                 # Load meta file
                 try:
                     meta_df_raw = load_data_file(meta_file)
@@ -647,12 +795,224 @@ if using_standard or using_multi_source:
                 mime="text/csv"
             )
 
+            # Optimization Recommendations Section
+            st.markdown("---")
+            st.header("✍️ AI-Powered Optimization Recommendations")
+            st.markdown("Generate actionable recommendations to optimize your striking distance opportunities.")
+
+            # Import optimization modules
+            from modules.optimization_generator import OptimizationGenerator
+            from modules.query_clustering import cluster_queries_by_url
+
+            # Select URLs for optimization
+            st.markdown("### 🎯 Select URLs to Optimize")
+
+            # Get top opportunities (up to 20 URLs)
+            if 'seo_value_score' in results.columns:
+                top_urls = results.nlargest(20, 'seo_value_score')['url'].unique()
+            else:
+                # Fallback: sort by clicks
+                url_clicks = results.groupby('url')['clicks'].sum().sort_values(ascending=False)
+                top_urls = url_clicks.head(20).index.tolist()
+
+            selected_urls = st.multiselect(
+                "Choose URLs to generate optimization plans (up to 10)",
+                options=top_urls,
+                default=list(top_urls[:3]),
+                max_selections=10,
+                help="Select URLs where you want AI-powered optimization recommendations"
+            )
+
+            if selected_urls and st.button("🚀 Generate Optimization Plans", type="primary"):
+                with st.spinner("Generating AI-powered recommendations... This may take a few minutes."):
+                    try:
+                        # Initialize generator
+                        opt_generator = OptimizationGenerator()
+
+                        optimization_reports = {}
+
+                        for idx, url in enumerate(selected_urls, 1):
+                            st.info(f"Processing {idx}/{len(selected_urls)}: {url}")
+
+                            # Get URL data
+                            url_results = results[results['url'] == url]
+
+                            # Get meta data
+                            url_meta_data = meta_df[meta_df['url'] == url]
+
+                            if url_meta_data.empty:
+                                st.warning(f"⚠️ Skipping {url} - no meta data found")
+                                continue
+
+                            url_meta = url_meta_data.iloc[0]
+
+                            # Extract missing keywords (not optimized)
+                            missing_kws = url_results[
+                                url_results.get('overall_optimized', True) is False
+                            ].to_dict('records')
+
+                            if not missing_kws:
+                                st.info(f"✓ {url} - all keywords already optimized!")
+                                continue
+
+                            # Prepare current elements
+                            current_elements = {
+                                'title': url_meta.get('title', ''),
+                                'h1': url_meta.get('h1', ''),
+                                'h2s': str(url_meta.get('h2', '')).split(',') if url_meta.get('h2') else [],
+                                'meta_description': url_meta.get('meta_description', '')
+                            }
+
+                            # Calculate ranking data
+                            ranking_data = {
+                                'position': url_results['position'].mean(),
+                                'clicks': url_results['clicks'].sum(),
+                                'impressions': url_results['impressions'].sum()
+                            }
+
+                            # Identify primary intent
+                            primary_intent = opt_generator.identify_query_intent(
+                                missing_kws[0].get('query', '')
+                            )
+
+                            # Generate optimization report
+                            report = opt_generator.generate_url_optimization_report(
+                                url=url,
+                                current_elements=current_elements,
+                                missing_keywords=missing_kws,
+                                ranking_data=ranking_data,
+                                page_intent=primary_intent
+                            )
+
+                            optimization_reports[url] = report
+
+                        # Store in session state for export
+                        st.session_state['optimization_reports'] = optimization_reports
+
+                        st.success(f"✅ Generated {len(optimization_reports)} optimization reports!")
+
+                    except Exception as e:
+                        st.error(f"❌ Error generating recommendations: {str(e)}")
+                        import traceback
+                        with st.expander("🔍 View Error Details"):
+                            st.code(traceback.format_exc())
+
+            # Display reports if they exist
+            if 'optimization_reports' in st.session_state and st.session_state['optimization_reports']:
+                st.markdown("---")
+                st.markdown("### 📋 Optimization Reports")
+
+                for url, report in st.session_state['optimization_reports'].items():
+                    with st.expander(f"📄 {url}", expanded=False):
+                        # Current Performance
+                        st.markdown("#### 📊 Current Performance")
+                        col1, col2, col3 = st.columns(3)
+
+                        with col1:
+                            avg_pos = report['current_performance']['avg_position']
+                            st.metric("Avg Position", f"{avg_pos:.1f}")
+
+                        with col2:
+                            total_clicks = report['current_performance']['total_clicks']
+                            st.metric("Total Clicks", f"{int(total_clicks):,}")
+
+                        with col3:
+                            total_impr = report['current_performance']['total_impressions']
+                            st.metric("Total Impressions", f"{int(total_impr):,}")
+
+                        # Keyword Analysis
+                        st.markdown("#### 🔍 Keyword Analysis")
+                        kw_analysis = report.get('keyword_analysis', {})
+
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Total Missing", kw_analysis.get('total_missing', 0))
+                        with col2:
+                            st.metric("Recommended", kw_analysis.get('recommended_count', 0),
+                                     help="Keywords that fit naturally and match intent")
+                        with col3:
+                            st.metric("Filtered Out", kw_analysis.get('filtered_count', 0),
+                                     help="Keywords filtered for low relevancy or intent mismatch")
+
+                        if kw_analysis.get('top_recommended'):
+                            st.markdown("**Top Recommended Keywords:**")
+                            st.markdown(", ".join([f"`{kw}`" for kw in kw_analysis['top_recommended']]))
+
+                        st.markdown("---")
+
+                        # Title Optimization
+                        if 'title_variations' in report:
+                            st.markdown("#### 📝 Title Optimization")
+                            st.markdown(f"**Current Title:** {report['current']['title']}")
+                            st.caption(f"Length: {len(report['current']['title'])} characters")
+
+                            st.markdown("**Recommended Variations:**")
+
+                            for i, variation in enumerate(report['title_variations'], 1):
+                                st.markdown(f"**Option {i}:**")
+                                st.success(variation['title'])
+                                st.caption(f"✅ Keywords added: {', '.join(variation.get('keywords_added', []))}")
+                                st.caption(f"📏 Length: {variation['length']} chars")
+                                st.caption(f"💡 {variation.get('reasoning', '')}")
+                                st.markdown("")
+
+                        st.markdown("---")
+
+                        # H1 Optimization
+                        if 'h1_suggestion' in report:
+                            st.markdown("#### 🎯 H1 Optimization")
+                            st.markdown(f"**Current H1:** {report['current']['h1']}")
+                            st.markdown(f"**Recommended H1:**")
+                            st.success(report['h1_suggestion']['h1'])
+                            st.caption(f"✅ Keywords incorporated: {', '.join(report['h1_suggestion'].get('keywords_added', []))}")
+                            st.caption(f"💡 {report['h1_suggestion'].get('reasoning', '')}")
+
+                        st.markdown("---")
+
+                        # Meta Description
+                        if 'meta_descriptions' in report and report['meta_descriptions']:
+                            st.markdown("#### 📄 Meta Description Optimization")
+                            st.markdown(f"**Current Meta:** {report['current']['meta_description']}")
+                            st.caption(f"Length: {len(report['current']['meta_description'])} characters")
+
+                            st.markdown("**Recommended Variations:**")
+
+                            for i, meta_var in enumerate(report['meta_descriptions'], 1):
+                                st.markdown(f"**Option {i}:**")
+                                st.success(meta_var['meta_description'])
+                                st.caption(f"✅ Keywords added: {', '.join(meta_var.get('keywords_added', []))}")
+                                st.caption(f"📏 Length: {meta_var['length']} chars")
+                                if 'reasoning' in meta_var:
+                                    st.caption(f"💡 {meta_var['reasoning']}")
+                                st.markdown("")
+
+                        # No recommendations message
+                        if 'recommendation' in report:
+                            st.info(report['recommendation'])
+
+                # Export option
+                st.markdown("---")
+                st.markdown("### 📥 Export Optimization Reports")
+
+                # JSON export
+                import json
+                json_export = json.dumps(st.session_state['optimization_reports'], indent=2)
+
+                st.download_button(
+                    label="📋 Download Reports (JSON)",
+                    data=json_export,
+                    file_name=f"optimization_reports_{datetime.now().strftime('%Y%m%d')}.json",
+                    mime="application/json",
+                    help="Download all optimization reports in JSON format"
+                )
+
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
         st.info("Please check your file formats and try again.")
 
 else:
-    st.info("Please upload both Excel files to begin the analysis.")
+    st.info("Please upload files or connect to Google Search Console to begin the analysis.")
+    st.caption("💡 Tip: Use the 'Connect to GSC' tab for the fastest workflow!")
 
 # Footer
 st.markdown("---")
