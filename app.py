@@ -228,12 +228,20 @@ with tab3:
             if sites:
                 st.success(f"✅ Connected! Found {len(sites)} verified site(s)")
 
-                # Site selection
+                # Site selection with session state persistence
+                if 'selected_gsc_site' not in st.session_state:
+                    st.session_state['selected_gsc_site'] = sites[0]
+
                 selected_site = st.selectbox(
                     "🌐 Select Website",
                     sites,
+                    index=sites.index(st.session_state['selected_gsc_site']) if st.session_state['selected_gsc_site'] in sites else 0,
+                    key="gsc_site_selector",
                     help="Choose which GSC property to analyze"
                 )
+
+                # Update session state when selection changes
+                st.session_state['selected_gsc_site'] = selected_site
 
                 # Configuration
                 col1, col2 = st.columns(2)
