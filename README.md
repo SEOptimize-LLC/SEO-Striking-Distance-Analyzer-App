@@ -22,13 +22,27 @@ An AI-powered Streamlit application that intelligently analyzes and prioritizes 
 - **Rate Limiting**: Respects API limits (12 requests/minute)
 - **Smart Caching**: Prevents duplicate API calls
 
-### 🤖 AI-Powered Semantic Analysis (Optional)
+### 🔗 Direct Google Search Console Integration (NEW!)
+- **OAuth2 Authentication**: Connect directly to your Google Search Console account
+- **No Manual Exports**: Fetch data automatically from GSC API
+- **Position Filtering**: Filter by striking distance positions at API level
+- **Multi-Property Support**: Access all your verified GSC properties
+
+### 🤖 AI-Powered Semantic Analysis (Unified via OpenRouter)
+- **Single API Key**: Access all AI models through OpenRouter (10-20% cost savings)
 - **Tiered AI Analysis**: Cost-optimized three-stage approach
   - **Stage 1**: Gemini 2.0 Flash for bulk filtering (keeps keywords ≥40 relevancy)
   - **Stage 2**: GPT-4o for detailed semantic scoring
   - **Stage 3**: Claude Sonnet 4.5 for deep analysis on top 20%
 - **Topic Extraction**: AI-powered extraction of URL main topics
 - **Relevancy Scoring**: 0-100 semantic relevancy scores for each keyword-URL pair
+
+### ✍️ AI-Powered Optimization Recommendations (NEW!)
+- **Smart Keyword Filtering**: 3-stage validation (relevancy + intent matching + natural fit)
+- **Title Optimization**: Get 3 AI-generated title variations with keyword incorporation
+- **H1 Suggestions**: Optimized H1 headings with reasoning
+- **Meta Descriptions**: 2 compelling variations under 160 characters
+- **Intent Validation**: Prevents forcing irrelevant keywords that don't match page intent
 
 ### 🎯 Smart Prioritization Engine
 - **SEO Value Score**: Weighted composite score combining:
@@ -55,26 +69,48 @@ An AI-powered Streamlit application that intelligently analyzes and prioritizes 
 
 ## Usage
 
-### Standard Workflow (Recommended)
+### Recommended Workflow (GSC Direct Integration) - NEW!
+
+1. **Run the application:**
+   ```bash
+   streamlit run app.py
+   ```
+
+2. **Configure optional enrichment** (in sidebar):
+   - Enable **DataForSEO** for search volume & keyword difficulty
+   - Enable **AI Analysis** for semantic relevancy scoring (via OpenRouter)
+
+3. **Connect to Google Search Console** (in "Connect to GSC" tab):
+   - Click "Sign in with Google"
+   - Authorize the app
+   - Select your website
+   - Configure date range and position filters
+   - Upload Screaming Frog crawl data
+   - Click "Fetch GSC Data & Analyze"
+
+4. **Generate AI-Powered Optimization Recommendations**:
+   - Select URLs to optimize (up to 10)
+   - Click "Generate Optimization Plans"
+   - Get title, H1, H2, and meta description variations
+   - Export recommendations as JSON
+
+5. **Review results** and download exports
+
+### Standard Workflow (Manual Upload)
+
+Use this if you prefer manual exports or don't have OAuth set up:
 
 1. **Prepare your data files:**
    - **Screaming Frog Export**: Crawl your site and export meta tags (URL, Title, H1, H2s, Meta Description)
    - **Google Search Console Export**: Export performance report (URL, Query, Position, Clicks, Impressions)
 
-2. **Run the application:**
-   ```bash
-   streamlit run app.py
-   ```
+2. **Upload both files** in the "Standard Upload" tab
 
-3. **Configure optional enrichment** (in sidebar):
-   - Enable **DataForSEO** for search volume & keyword difficulty
-   - Enable **AI Analysis** for semantic relevancy scoring
+3. **Click "🚀 Analyze Striking Distance"** to start the analysis
 
-4. **Upload both files** in the "Standard Upload" tab
+4. **Generate optimization recommendations** (optional)
 
-5. **Click "🚀 Analyze Striking Distance"** to start the analysis
-
-6. **Review results** and download the CSV export
+5. **Review results** and download the CSV export
 
 ### Multi-Source Upload (Alternative)
 
@@ -132,34 +168,59 @@ Use this when you:
    - Example: 10,000 keywords = 10 API requests = ~$1
    - Caching prevents duplicate API calls for the same keywords
 
-#### Setting up AI Models (Optional - For Advanced Features)
+#### Setting up OpenRouter (Optional - For AI Features)
 
-1. **OpenAI (GPT-4o)**:
-   - Sign up at [https://platform.openai.com/](https://platform.openai.com/)
-   - Get API key from [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-   - Pricing: $2.50/M input tokens, $10/M output tokens
+**NEW**: All AI models now accessed through a single OpenRouter API key!
 
-2. **Anthropic (Claude Sonnet 4.5)**:
-   - Sign up at [https://console.anthropic.com/](https://console.anthropic.com/)
-   - Get API key from console
-   - Pricing: $3/M input tokens, $15/M output tokens
+1. **Sign up for OpenRouter**:
+   - Get your API key at [https://openrouter.ai/keys](https://openrouter.ai/keys)
+   - One API key gives you access to Gemini, GPT-4o, and Claude
+   - Pay-as-you-go pricing, often 10-20% cheaper than direct APIs
 
-3. **Google AI (Gemini 2.0 Flash)**:
-   - Get API key at [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-   - Pricing: $0.075/M input tokens (Gemini Flash 2.0)
-
-4. **Add to Streamlit Secrets**:
+2. **Add to Streamlit Secrets**:
    ```toml
-   OPENAI_API_KEY = "sk-..."
-   ANTHROPIC_API_KEY = "sk-ant-..."
-   GOOGLE_AI_API_KEY = "..."
+   # Single API key for all models
+   OPENROUTER_API_KEY = "sk-or-v1-..."
+
+   # Optional: Your app URL for OpenRouter rankings
+   app_url = "https://your-app.streamlit.app"
    ```
 
-5. **Cost Optimization**:
+3. **Cost Optimization**:
    - Tiered analysis reduces costs by ~80% vs. using only GPT-4o/Claude
    - Example: 10,000 keywords = ~$0.20-0.50 (vs. $2-3 with single model)
    - Gemini Flash filters out irrelevant keywords early
    - Claude only analyzes top 20% of filtered keywords
+   - **10-20% additional savings** vs. direct API access
+
+4. **Available Models via OpenRouter**:
+   - **Gemini 2.0 Flash** (`google/gemini-2.0-flash-exp:free`) - Bulk filtering
+   - **GPT-4o** (`openai/gpt-4o`) - Semantic scoring
+   - **Claude Sonnet 4.5** (`anthropic/claude-sonnet-4.5`) - Deep analysis
+
+#### Setting up Google Search Console Integration (Optional - Recommended)
+
+**NEW**: Connect directly to GSC and eliminate manual CSV exports!
+
+1. **Create OAuth Credentials**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+   - Create a new OAuth 2.0 Client ID
+   - Add authorized redirect URI: `https://your-app.streamlit.app` (or `http://localhost:8501` for local)
+
+2. **Add to Streamlit Secrets**:
+   ```toml
+   [google]
+   client_id = "your-client-id.apps.googleusercontent.com"
+   client_secret = "your-client-secret"
+   redirect_uri = "https://your-app.streamlit.app"
+   ```
+
+3. **Benefits**:
+   - ✅ No manual CSV exports
+   - ✅ Always up-to-date data
+   - ✅ Position filtering at API level
+   - ✅ Access all verified properties
+   - ✅ Faster workflow (50% time savings)
 
 ## Analysis Elements
 
@@ -184,14 +245,15 @@ The app checks if query terms appear in:
 - Streamlit >= 1.28.0
 - Pandas >= 2.0.0
 - OpenPyXL >= 3.1.0 (for Excel files)
-- Requests >= 2.31.0
+- Requests >= 2.31.0 (for OpenRouter API and web scraping)
 - BeautifulSoup4 >= 4.12.0
 - lxml >= 4.9.0
 
 ### Optional Dependencies (for advanced features)
-- anthropic >= 0.18.0 (for Claude Sonnet 4.5)
-- openai >= 1.12.0 (for GPT-4o)
-- google-generativeai >= 0.3.0 (for Gemini 2.0 Flash)
+- google-auth >= 2.23.0 (for GSC OAuth)
+- google-auth-oauthlib >= 1.1.0 (for GSC OAuth)
+- google-auth-httplib2 >= 0.1.1 (for GSC OAuth)
+- google-api-python-client >= 2.108.0 (for GSC API)
 
 **Supported File Formats:**
 - Excel files (.xlsx, .xls)
