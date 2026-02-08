@@ -60,8 +60,14 @@ class DataParser:
             return 'screaming_frog'
 
         # Google Search Console signatures
-        gsc_signatures = ['landing page', 'query', 'clicks', 'impressions']
-        if all(any(sig in col for col in columns) for sig in gsc_signatures):
+        # Check for query + clicks + impressions (required)
+        # AND (landing page OR page) for URL column
+        has_query = any('query' in col or 'queries' in col for col in columns)
+        has_clicks = any('clicks' in col for col in columns)
+        has_impressions = any('impression' in col for col in columns)
+        has_url_col = any(col in ['page', 'landing page', 'url', 'top pages'] for col in columns)
+
+        if has_query and has_clicks and has_impressions and has_url_col:
             return 'gsc'
 
         # Ahrefs signatures
