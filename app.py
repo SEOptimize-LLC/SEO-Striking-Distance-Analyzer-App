@@ -27,7 +27,7 @@ st.markdown("Analyze if your top organic queries are properly optimized in your 
 st.sidebar.header("Configuration")
 
 st.sidebar.subheader("📊 Analysis Settings")
-min_clicks = st.sidebar.slider("Minimum Clicks Threshold", 1, 5000, 10, 10)
+min_clicks = st.sidebar.slider("Minimum Clicks Threshold", 1, 5000, 10, 1)
 top_queries = st.sidebar.slider("Top Queries per URL", 1, 20, 5, 1)
 use_impressions_weighted = st.sidebar.checkbox("Use Impressions-Weighted Clicks", value=True)
 
