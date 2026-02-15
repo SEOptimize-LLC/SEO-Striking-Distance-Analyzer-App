@@ -123,12 +123,16 @@ class DataForSEOClient:
         self._rate_limit()
 
         try:
+            st.info(f"🔍 Making DataForSEO API request to: {url}")
             response = requests.post(
                 url,
                 headers=self.headers,
                 json=payload,
                 timeout=60
             )
+
+            st.info(f"📡 DataForSEO API response status: {response.status_code}")
+
             response.raise_for_status()
 
             data = response.json()
@@ -136,15 +140,22 @@ class DataForSEOClient:
             # Check for API errors
             if data.get("status_code") != 20000:
                 error_msg = data.get("status_message", "Unknown error")
+                st.error(f"❌ DataForSEO API returned error code {data.get('status_code')}: {error_msg}")
+                st.error(f"Full response: {data}")
                 raise Exception(f"DataForSEO API error: {error_msg}")
 
+            st.success(f"✅ DataForSEO API request successful")
             return data
 
         except requests.exceptions.Timeout:
+            st.error("❌ DataForSEO API request timed out")
             raise Exception("DataForSEO API request timed out")
         except requests.exceptions.HTTPError as e:
+            st.error(f"❌ DataForSEO API HTTP error: {e.response.status_code}")
+            st.error(f"Response text: {e.response.text}")
             raise Exception(f"DataForSEO API HTTP error: {e.response.status_code}")
         except Exception as e:
+            st.error(f"❌ DataForSEO API error: {str(e)}")
             raise Exception(f"DataForSEO API error: {str(e)}")
 
     def _parse_response(self, response_data: Dict) -> Dict[str, Dict]:
@@ -162,22 +173,25 @@ class DataForSEOClient:
             tasks = response_data.get("tasks", [])
 
             if not tasks:
-                print("⚠️ No tasks in DataForSEO response")
+                st.warning("⚠️ No tasks in DataForSEO response")
+                st.json(response_data)
                 return results
+
+            st.info(f"📦 Found {len(tasks)} task(s) in response")
 
             for task in tasks:
                 task_status = task.get("status_code")
                 if task_status != 20000:
-                    print(f"⚠️ Task status code: {task_status}, message: {task.get('status_message', 'N/A')}")
+                    st.warning(f"⚠️ Task status code: {task_status}, message: {task.get('status_message', 'N/A')}")
                     continue
 
                 task_result = task.get("result", [])
 
                 if not task_result:
-                    print("⚠️ Empty result array in task")
+                    st.warning("⚠️ Empty result array in task")
                     continue
 
-                print(f"✓ Processing {len(task_result)} keywords from DataForSEO response")
+                st.info(f"✓ Processing {len(task_result)} keywords from DataForSEO response")
 
                 for idx, result in enumerate(task_result):
                     keyword = result.get("keyword", "")
@@ -198,6 +212,11 @@ class DataForSEOClient:
                         competition = keyword_info.get("competition", 0)
                         cpc = keyword_info.get("cpc", 0)
 
+                    # Debug: Show first result structure
+                    if idx == 0:
+                        st.info("Sample DataForSEO result structure:")
+                        st.json(result)
+
                     results[keyword.lower()] = {
                         "keyword": keyword,
                         "search_volume": search_volume if search_volume else 0,
@@ -210,14 +229,14 @@ class DataForSEOClient:
 
                     # Debug first few keywords
                     if idx < 3:
-                        print(f"  Sample {idx+1}: '{keyword}' -> Volume: {search_volume}, KD: {int(competition * 100)}")
+                        st.caption(f"  Sample {idx+1}: '{keyword}' -> Volume: {search_volume}, KD: {int(competition * 100) if competition else 0}, CPC: ${cpc}")
 
         except Exception as e:
             import traceback
-            print(f"⚠️ Error parsing DataForSEO response: {str(e)}")
-            print(f"Traceback: {traceback.format_exc()}")
+            st.error(f"⚠️ Error parsing DataForSEO response: {str(e)}")
+            st.error(f"Traceback: {traceback.format_exc()}")
 
-        print(f"✓ Parsed {len(results)} keywords from response")
+        st.info(f"✓ Parsed {len(results)} keywords from response")
         return results
 
     def get_keyword_metrics(
