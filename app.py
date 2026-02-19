@@ -148,10 +148,12 @@ _has_nlp_api_key = (
     "GOOGLE_NLP_API_KEY" in st.secrets and
     bool(st.secrets.get("GOOGLE_NLP_API_KEY", "").strip())
 )
-_has_gsc_oauth_token = bool(
-    st.session_state.get("gsc_credentials", {}).get("token", "").strip()
-)
-google_nlp_available = _has_nlp_api_key or _has_gsc_oauth_token
+_gsc_creds_dict = st.session_state.get("gsc_credentials") or {}
+_gsc_raw_token = _gsc_creds_dict.get("token") if isinstance(_gsc_creds_dict, dict) else None
+_has_gsc_oauth_token = bool(_gsc_raw_token and str(_gsc_raw_token).strip())
+# OAuth is *configured* in secrets even if no active session yet
+_has_google_oauth_config = "google" in st.secrets
+google_nlp_available = _has_nlp_api_key or _has_gsc_oauth_token or _has_google_oauth_config
 
 use_entity_extraction = st.sidebar.checkbox(
     "Entity Gap Analysis",
@@ -172,11 +174,15 @@ if use_entity_extraction:
             "If you see a scope error, disconnect and re-authenticate "
             "via the 'Connect to GSC' tab to include the NLP scope."
         )
+    elif _has_google_oauth_config:
+        st.sidebar.info(
+            "Connect to GSC (below) to activate Entity Analysis. "
+            "Your Google OAuth credentials will be reused for the NLP API."
+        )
     else:
-        st.sidebar.error("⚠️ Google credentials not found")
+        st.sidebar.error("⚠️ Google credentials not configured")
         st.sidebar.caption(
-            "Either authenticate via the 'Connect to GSC' tab, or add "
-            "GOOGLE_NLP_API_KEY to Streamlit secrets."
+            "Add GOOGLE_NLP_API_KEY to Streamlit secrets."
         )
 
 # Handle OAuth callback from Google
@@ -991,9 +997,18 @@ if using_standard or using_multi_source or using_gsc:
 
                                 try:
                                     serp_analyzer = SerpAnalyzer()
+                                    # Only instantiate when a usable credential exists
+                                    # (API key or an active OAuth token — not just OAuth config)
+                                    _entity_auth_ready = _has_nlp_api_key or _has_gsc_oauth_token
+                                    if use_entity_extraction and not _entity_auth_ready:
+                                        st.warning(
+                                            "Entity Gap Analysis requires an active Google connection. "
+                                            "Please connect to GSC via the 'Connect to GSC' tab first, "
+                                            "then re-run the optimization."
+                                        )
                                     entity_extractor = (
                                         EntityExtractor()
-                                        if (use_entity_extraction and google_nlp_available)
+                                        if (use_entity_extraction and _entity_auth_ready)
                                         else None
                                     )
 
