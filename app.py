@@ -143,10 +143,15 @@ if use_serp_analysis:
 else:
     serp_competitor_depth = 5
 
-google_nlp_available = (
+# Google NLP is available via API key OR via the existing GSC OAuth token
+_has_nlp_api_key = (
     "GOOGLE_NLP_API_KEY" in st.secrets and
-    st.secrets.get("GOOGLE_NLP_API_KEY", "").strip()
+    bool(st.secrets.get("GOOGLE_NLP_API_KEY", "").strip())
 )
+_has_gsc_oauth_token = bool(
+    st.session_state.get("gsc_credentials", {}).get("token", "").strip()
+)
+google_nlp_available = _has_nlp_api_key or _has_gsc_oauth_token
 
 use_entity_extraction = st.sidebar.checkbox(
     "Entity Gap Analysis",
@@ -154,16 +159,25 @@ use_entity_extraction = st.sidebar.checkbox(
     help=(
         "Extract named entities from competitor pages using Google "
         "Natural Language API, then use AI to interpret which topical "
-        "gaps matter most. Requires GOOGLE_NLP_API_KEY."
+        "gaps matter most. Uses your existing Google authentication."
     )
 )
 
 if use_entity_extraction:
-    if google_nlp_available:
-        st.sidebar.success("✅ Google Natural Language API connected")
+    if _has_nlp_api_key:
+        st.sidebar.success("✅ Google NLP API key connected")
+    elif _has_gsc_oauth_token:
+        st.sidebar.success("✅ Using Google OAuth credentials (GSC)")
+        st.sidebar.caption(
+            "If you see a scope error, disconnect and re-authenticate "
+            "via the 'Connect to GSC' tab to include the NLP scope."
+        )
     else:
-        st.sidebar.error("⚠️ Add GOOGLE_NLP_API_KEY to Streamlit secrets")
-        st.sidebar.code('GOOGLE_NLP_API_KEY = "your-key-here"', language="toml")
+        st.sidebar.error("⚠️ Google credentials not found")
+        st.sidebar.caption(
+            "Either authenticate via the 'Connect to GSC' tab, or add "
+            "GOOGLE_NLP_API_KEY to Streamlit secrets."
+        )
 
 # Handle OAuth callback from Google
 auth_code = st.query_params.get("code")

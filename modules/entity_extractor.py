@@ -17,37 +17,75 @@ from modules.ai_analysis import AIAnalyzer
 
 
 class EntityExtractor:
-    """Extract and analyze topical entities using Google NLP + AI interpretation."""
+    """Extract and analyze topical entities using Google NLP + AI interpretation.
+
+    Supports two authentication methods (in priority order):
+    1. Simple API key  — GOOGLE_NLP_API_KEY in Streamlit secrets
+    2. OAuth2 bearer token — reuses the Google OAuth token from the GSC
+       authentication flow (requires the user to have re-authenticated after
+       the cloud-language scope was added to the OAuth scopes list)
+    """
 
     GOOGLE_NLP_URL = "https://language.googleapis.com/v1/documents:analyzeEntities"
 
-    # Entity types worth surfacing (skip OTHER and NUMBER noise)
-    RELEVANT_ENTITY_TYPES = {
-        "PERSON", "LOCATION", "ORGANIZATION", "EVENT",
-        "WORK_OF_ART", "CONSUMER_GOOD", "OTHER"
-    }
+    def __init__(self, api_key: Optional[str] = None, oauth_token: Optional[str] = None):
+        """Initialize entity extractor.
 
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize entity extractor with Google NLP API key.
+        Auth resolution order:
+        1. api_key parameter
+        2. GOOGLE_NLP_API_KEY in st.secrets
+        3. oauth_token parameter
+        4. OAuth token from gsc_credentials in st.session_state
 
         Args:
-            api_key: Google Natural Language API key (optional, uses st.secrets if not provided)
+            api_key: Simple Google API key (optional)
+            oauth_token: OAuth2 bearer token string (optional)
         """
+        self.api_key = None
+        self.oauth_token = None
+
+        # Priority 1 & 2: Simple API key
         if api_key:
             self.api_key = api_key
-        else:
-            try:
-                self.api_key = st.secrets["GOOGLE_NLP_API_KEY"]
-            except (KeyError, FileNotFoundError) as e:
-                raise ValueError(
-                    "Google NLP API key not found. Add GOOGLE_NLP_API_KEY to Streamlit secrets."
-                ) from e
+        elif "GOOGLE_NLP_API_KEY" in st.secrets and st.secrets.get("GOOGLE_NLP_API_KEY", "").strip():
+            self.api_key = st.secrets["GOOGLE_NLP_API_KEY"].strip()
+
+        # Priority 3 & 4: OAuth2 bearer token
+        if not self.api_key:
+            if oauth_token:
+                self.oauth_token = oauth_token
+            else:
+                # Reuse the Google OAuth token already authenticated for GSC
+                creds_dict = st.session_state.get("gsc_credentials", {})
+                token = creds_dict.get("token", "").strip() if creds_dict else ""
+                if token:
+                    self.oauth_token = token
+
+        if not self.api_key and not self.oauth_token:
+            raise ValueError(
+                "No Google credentials available for Natural Language API. "
+                "Either add GOOGLE_NLP_API_KEY to Streamlit secrets, or "
+                "authenticate with Google via the 'Connect to GSC' tab first "
+                "(you may need to disconnect and re-authenticate to include the "
+                "cloud-language scope)."
+            )
 
         # AI analyzer for strategic interpretation — optional, gracefully degrades
         try:
             self.ai = AIAnalyzer()
         except Exception:
             self.ai = None
+
+    def _build_request_url_and_headers(self) -> tuple:
+        """Build the NLP API URL and headers based on available auth method.
+
+        Returns:
+            Tuple of (url, headers)
+        """
+        if self.api_key:
+            return f"{self.GOOGLE_NLP_URL}?key={self.api_key}", {}
+        else:
+            return self.GOOGLE_NLP_URL, {"Authorization": f"Bearer {self.oauth_token}"}
 
     def extract_entities_google_nlp(self, text: str) -> List[Dict[str, Any]]:
         """Extract entities from text using Google Natural Language API.
@@ -74,11 +112,8 @@ class EntityExtractor:
         }
 
         try:
-            response = requests.post(
-                f"{self.GOOGLE_NLP_URL}?key={self.api_key}",
-                json=payload,
-                timeout=30
-            )
+            url, headers = self._build_request_url_and_headers()
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
             data = response.json()
 

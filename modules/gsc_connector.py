@@ -17,10 +17,11 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 
-# OAuth scopes required for GSC access
+# OAuth scopes required for GSC access + Google Natural Language API
 SCOPES = [
     'https://www.googleapis.com/auth/webmasters.readonly',
-    'https://www.googleapis.com/auth/webmasters'
+    'https://www.googleapis.com/auth/webmasters',
+    'https://www.googleapis.com/auth/cloud-language'
 ]
 
 
