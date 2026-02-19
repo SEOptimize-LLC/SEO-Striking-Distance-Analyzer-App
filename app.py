@@ -113,6 +113,58 @@ if use_ai_analysis:
 else:
     ai_model_option = None
 
+st.sidebar.subheader("🔎 Competitive Intelligence")
+st.sidebar.caption(
+    "Runs only on top queries of selected URLs — never on raw GSC data."
+)
+
+use_serp_analysis = st.sidebar.checkbox(
+    "SERP Competitor Analysis",
+    value=False,
+    help=(
+        "Fetch top-ranking pages for each keyword via DataForSEO, "
+        "scrape their title/H1/H2 patterns, and use them to inform "
+        "optimization recommendations."
+    )
+)
+
+if use_serp_analysis:
+    serp_competitor_depth = st.sidebar.slider(
+        "Competitor pages to analyze",
+        min_value=3,
+        max_value=10,
+        value=5,
+        help="Number of top SERP results to scrape per keyword"
+    )
+    if not dataforseo_available:
+        st.sidebar.warning(
+            "⚠️ SERP analysis requires DataForSEO credentials"
+        )
+else:
+    serp_competitor_depth = 5
+
+google_nlp_available = (
+    "GOOGLE_NLP_API_KEY" in st.secrets and
+    st.secrets.get("GOOGLE_NLP_API_KEY", "").strip()
+)
+
+use_entity_extraction = st.sidebar.checkbox(
+    "Entity Gap Analysis",
+    value=False,
+    help=(
+        "Extract named entities from competitor pages using Google "
+        "Natural Language API, then use AI to interpret which topical "
+        "gaps matter most. Requires GOOGLE_NLP_API_KEY."
+    )
+)
+
+if use_entity_extraction:
+    if google_nlp_available:
+        st.sidebar.success("✅ Google Natural Language API connected")
+    else:
+        st.sidebar.error("⚠️ Add GOOGLE_NLP_API_KEY to Streamlit secrets")
+        st.sidebar.code('GOOGLE_NLP_API_KEY = "your-key-here"', language="toml")
+
 # Handle OAuth callback from Google
 auth_code = st.query_params.get("code")
 if auth_code and "gsc_credentials" not in st.session_state:
@@ -725,6 +777,8 @@ if using_standard or using_multi_source or using_gsc:
                 st.session_state['analysis_results'] = results.copy()
                 st.session_state['meta_df'] = meta_df.copy()
                 st.session_state['meta_columns'] = meta_columns
+                # Store scraped content for entity extraction in optimization step
+                st.session_state['scraped_data'] = scraped_data
 
                 st.success(f"🎉 Analysis complete! Found {len(results)} keyword opportunities.")
 
@@ -909,6 +963,118 @@ if using_standard or using_multi_source or using_gsc:
                             # Initialize generator
                             opt_generator = OptimizationGenerator()
 
+                            # ── Competitive Intelligence ──────────────────────
+                            # Runs ONLY on the top queries of the selected URLs.
+                            # Never touches raw GSC data — filtering is already done.
+                            competitive_contexts = {}
+
+                            if use_serp_analysis or use_entity_extraction:
+                                from modules.serp_analyzer import SerpAnalyzer
+                                from modules.entity_extractor import EntityExtractor
+
+                                st.markdown("---")
+                                st.markdown("#### 🔎 Building Competitive Intelligence...")
+
+                                try:
+                                    serp_analyzer = SerpAnalyzer()
+                                    entity_extractor = (
+                                        EntityExtractor()
+                                        if (use_entity_extraction and google_nlp_available)
+                                        else None
+                                    )
+
+                                    for ci_url in selected_urls:
+                                        url_rows = results[results['url'] == ci_url]
+
+                                        # Top 3 queries by SEO value score (already filtered/prioritized)
+                                        score_col = 'seo_value_score' if 'seo_value_score' in url_rows.columns else 'clicks'
+                                        top_ci_queries = (
+                                            url_rows.nlargest(3, score_col)['query'].tolist()
+                                        )
+                                        if not top_ci_queries:
+                                            continue
+
+                                        primary_query = top_ci_queries[0]
+                                        st.info(f"🔍 SERP fetch: **{primary_query}** → {ci_url}")
+
+                                        serp_data = serp_analyzer.fetch_serp_results(
+                                            primary_query, depth=10
+                                        )
+                                        if not serp_data:
+                                            st.warning(f"⚠️ No SERP results for '{primary_query}'")
+                                            continue
+
+                                        st.info(
+                                            f"📄 Scraping top {serp_competitor_depth} "
+                                            f"competitor pages..."
+                                        )
+                                        competitor_pages = serp_analyzer.scrape_top_competitors(
+                                            serp_data,
+                                            max_pages=serp_competitor_depth
+                                        )
+
+                                        competitive_brief = serp_analyzer.build_competitive_brief(
+                                            primary_query, serp_data, competitor_pages
+                                        )
+
+                                        # Entity analysis — Google NLP + AI interpretation
+                                        entity_analysis = None
+                                        if entity_extractor and competitor_pages:
+                                            st.info(
+                                                f"🧬 Extracting entities from "
+                                                f"{len(competitor_pages)} competitor pages..."
+                                            )
+
+                                            # Get user's own page content from session state
+                                            raw_scraped = st.session_state.get('scraped_data', {})
+                                            your_content = raw_scraped.get(ci_url, "")
+                                            # scraped_data stores plain strings
+                                            if isinstance(your_content, dict):
+                                                your_content = your_content.get('content', '')
+
+                                            # Page topic from meta data
+                                            url_meta_row = meta_df[meta_df['url'] == ci_url]
+                                            if not url_meta_row.empty:
+                                                row = url_meta_row.iloc[0]
+                                                page_topic = (
+                                                    f"{row.get('title', '')} "
+                                                    f"{row.get('h1', '')}"
+                                                ).strip()
+                                            else:
+                                                page_topic = primary_query
+
+                                            entity_analysis = entity_extractor.run_full_analysis(
+                                                competitor_pages=competitor_pages,
+                                                your_page_content=your_content,
+                                                page_topic=page_topic,
+                                                keyword=primary_query
+                                            )
+
+                                            gap_count = len(
+                                                entity_analysis.get('entity_gaps', [])
+                                            )
+                                            if gap_count:
+                                                st.success(
+                                                    f"✅ Found {gap_count} entity gaps for {ci_url}"
+                                                )
+
+                                        competitive_contexts[ci_url] = {
+                                            'primary_query': primary_query,
+                                            'competitive_brief': competitive_brief,
+                                            'entity_analysis': entity_analysis
+                                        }
+
+                                    st.markdown("---")
+
+                                except Exception as ci_error:
+                                    st.warning(
+                                        f"⚠️ Competitive intelligence error: {str(ci_error)}"
+                                    )
+                                    import traceback
+                                    with st.expander("🔍 CI Error Details"):
+                                        st.code(traceback.format_exc())
+
+                            # ── Optimization Reports ───────────────────────────
                             optimization_reports = {}
 
                             for idx, url in enumerate(selected_urls, 1):
@@ -955,13 +1121,14 @@ if using_standard or using_multi_source or using_gsc:
                                     missing_kws[0].get('query', '')
                                 )
 
-                                # Generate optimization report
+                                # Generate optimization report (with competitive context if available)
                                 report = opt_generator.generate_url_optimization_report(
                                     url=url,
                                     current_elements=current_elements,
                                     missing_keywords=missing_kws,
                                     ranking_data=ranking_data,
-                                    page_intent=primary_intent
+                                    page_intent=primary_intent,
+                                    competitive_context=competitive_contexts.get(url)
                                 )
 
                                 optimization_reports[url] = report
@@ -1071,6 +1238,90 @@ if using_standard or using_multi_source or using_gsc:
                                 if 'reasoning' in meta_var:
                                     st.caption(f"💡 {meta_var['reasoning']}")
                                 st.markdown("")
+
+                        # ── Competitive Intelligence Display ──────────────
+                        comp_ctx = report.get('competitive_context')
+                        if comp_ctx:
+                            st.markdown("---")
+                            st.markdown("#### 🔎 Competitive Intelligence")
+                            st.caption(
+                                f"Based on top SERP results for: "
+                                f"**{comp_ctx.get('primary_query', '')}**"
+                            )
+
+                            brief = comp_ctx.get('competitive_brief', {})
+
+                            # Competitor titles
+                            title_patterns = brief.get('title_patterns', {})
+                            if title_patterns.get('examples'):
+                                st.markdown("**Competitor Title Tags (top-ranking pages):**")
+                                for i, t in enumerate(title_patterns['examples'], 1):
+                                    st.markdown(f"{i}. `{t}`")
+                                st.caption(
+                                    f"Avg length: {title_patterns.get('avg_length', '?')} chars | "
+                                    f"Common separator: {title_patterns.get('common_separator') or 'none'}"
+                                )
+
+                            st.markdown("")
+
+                            # Competitor H1s
+                            h1_patterns = brief.get('h1_patterns', {})
+                            if h1_patterns.get('examples'):
+                                st.markdown("**Competitor H1 Tags:**")
+                                for i, h in enumerate(h1_patterns['examples'], 1):
+                                    st.markdown(f"{i}. `{h}`")
+                                st.caption(
+                                    f"Avg length: {h1_patterns.get('avg_length', '?')} chars"
+                                )
+
+                        # ── Entity Gap Analysis Display ────────────────────
+                        entity_data = None
+                        if comp_ctx:
+                            entity_data = comp_ctx.get('entity_analysis')
+
+                        if entity_data and entity_data.get('entity_gaps'):
+                            st.markdown("---")
+                            st.markdown("#### 🧬 Entity Gap Analysis")
+                            st.caption(
+                                f"Entities found in top competitor pages "
+                                f"that are missing from your page — "
+                                f"based on {entity_data.get('pages_analyzed', 0)} pages analyzed"
+                            )
+
+                            gaps = entity_data['entity_gaps']
+
+                            # Build a clean display table
+                            import pandas as pd
+                            gap_rows = []
+                            for e in gaps[:15]:
+                                gap_rows.append({
+                                    'Entity': e['name'],
+                                    'Type': e['type'].title(),
+                                    'In % of Competitor Pages': f"{int(e['page_frequency'] * 100)}%",
+                                    'Avg Salience': f"{e['avg_salience']:.3f}",
+                                    'Wikipedia': '✓' if e.get('wikipedia_url') else ''
+                                })
+
+                            if gap_rows:
+                                st.dataframe(
+                                    pd.DataFrame(gap_rows),
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+
+                            # AI strategic interpretation
+                            ai_interp = entity_data.get('ai_interpretation', '')
+                            if ai_interp:
+                                st.markdown("**🤖 AI Strategic Interpretation:**")
+                                st.info(ai_interp)
+
+                            # Your page's entities for reference
+                            your_entities = entity_data.get('your_entities', [])
+                            if your_entities:
+                                with st.expander("📋 Entities already on your page"):
+                                    st.markdown(
+                                        ", ".join([f"`{e}`" for e in your_entities[:20]])
+                                    )
 
                         # No recommendations message
                         if 'recommendation' in report:

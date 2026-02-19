@@ -241,7 +241,8 @@ Respond in JSON format:
         missing_keywords: List[str],
         url: str,
         n_variations: int = 3,
-        max_length: int = 60
+        max_length: int = 60,
+        competitive_context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """Generate optimized title variations incorporating missing keywords.
 
@@ -251,6 +252,8 @@ Respond in JSON format:
             url: Page URL for context
             n_variations: Number of variations to generate
             max_length: Maximum title length in characters
+            competitive_context: Optional competitive intelligence dict with
+                                 competitor title patterns and entity gaps
 
         Returns:
             List of title variation dicts with 'title', 'keywords_added', 'length', 'reasoning'
@@ -258,26 +261,50 @@ Respond in JSON format:
         # Limit keywords to top 5 most important
         keywords_str = ', '.join(missing_keywords[:5])
 
-        prompt = f"""You are an SEO expert optimizing page titles.
+        # Build competitive context section if available
+        competitor_section = ""
+        if competitive_context:
+            brief = competitive_context.get("competitive_brief", {})
+            title_patterns = brief.get("title_patterns", {})
+            entity_analysis = competitive_context.get("entity_analysis", {})
+
+            if title_patterns.get("examples"):
+                examples = "\n".join([f"  - {t}" for t in title_patterns["examples"][:5]])
+                separator = title_patterns.get("common_separator")
+                avg_len = title_patterns.get("avg_length", "unknown")
+                competitor_section += f"""
+Competitor Title Intelligence (top-ranking pages for "{competitive_context.get('primary_query', '')}"):
+- Competitor titles (positions 1–{len(title_patterns['examples'])}):
+{examples}
+- Average competitor title length: {avg_len} chars
+- Most common separator: {separator or 'none'}
+"""
+
+            if entity_analysis and entity_analysis.get("entity_gaps"):
+                top_gaps = entity_analysis["entity_gaps"][:5]
+                gap_names = ", ".join([e["name"] for e in top_gaps])
+                competitor_section += f"\nKey entities missing from this page (vs competitors): {gap_names}\n"
+
+        prompt = f"""You are an SEO expert optimizing page titles with full competitive context.
 
 Current Title: {current_title}
 URL: {url}
 
-This page currently ranks for these high-value keywords that are MISSING from the title:
+High-value keywords missing from this title:
 {keywords_str}
-
+{competitor_section}
 Task: Generate {n_variations} optimized title variations that:
-1. Incorporate as many high-priority missing keywords as possible (naturally)
-2. Maintain natural readability and user intent
+1. Incorporate missing keywords naturally
+2. Learn from competitor title patterns above (format, length, style)
 3. Stay under {max_length} characters
 4. Preserve brand name if present in original
 5. Are compelling and click-worthy
-6. DON'T force keywords that don't fit naturally
+6. DON'T copy competitor titles — differentiate while matching the proven format
 
 For each variation, provide:
 - The new title
 - Which keywords were incorporated
-- Brief reasoning
+- Brief reasoning (reference competitor patterns where relevant)
 
 Format your response as JSON array:
 [
@@ -322,7 +349,8 @@ Format your response as JSON array:
         self,
         current_h1: str,
         missing_keywords: List[str],
-        primary_intent: str
+        primary_intent: str,
+        competitive_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Generate optimized H1 that incorporates missing keywords.
 
@@ -330,30 +358,56 @@ Format your response as JSON array:
             current_h1: Current H1 heading
             missing_keywords: High-priority keywords to incorporate
             primary_intent: Primary user intent (informational, transactional, etc.)
+            competitive_context: Optional competitive intelligence dict
 
         Returns:
             Dict with 'h1', 'keywords_added', 'reasoning'
         """
         keywords_str = ', '.join(missing_keywords[:3])
 
-        prompt = f"""Generate an optimized H1 heading for SEO.
+        # Build competitor H1 context if available
+        competitor_h1_section = ""
+        if competitive_context:
+            brief = competitive_context.get("competitive_brief", {})
+            h1_patterns = brief.get("h1_patterns", {})
+            entity_analysis = competitive_context.get("entity_analysis", {})
+
+            if h1_patterns.get("examples"):
+                examples = "\n".join(
+                    [f"  - {h}" for h in h1_patterns["examples"][:5]]
+                )
+                competitor_h1_section += (
+                    f"\nCompetitor H1s (top-ranking pages):\n{examples}\n"
+                    f"Average competitor H1 length: "
+                    f"{h1_patterns.get('avg_length', '?')} chars\n"
+                )
+
+            if entity_analysis and entity_analysis.get("entity_gaps"):
+                top_gaps = [
+                    e["name"] for e in entity_analysis["entity_gaps"][:3]
+                ]
+                competitor_h1_section += (
+                    f"Top missing entities: {', '.join(top_gaps)}\n"
+                )
+
+        prompt = f"""Generate an optimized H1 heading for SEO with competitive context.
 
 Current H1: {current_h1}
 Primary Intent: {primary_intent}
 Missing Keywords: {keywords_str}
-
+{competitor_h1_section}
 Create ONE optimized H1 that:
 1. Incorporates 1-2 of the most important missing keywords naturally
 2. Matches the {primary_intent} intent
 3. Is clear, concise, and compelling
 4. Stays under 70 characters
-5. Maintains natural language flow
+5. Learns from competitor H1 patterns above without copying them
 
 Respond in JSON format:
 {{
   "h1": "...",
   "keywords_added": ["kw1"],
-  "reasoning": "Brief explanation"
+  "reasoning": "Brief explanation referencing competitor patterns"
 }}"""
 
         try:
@@ -444,7 +498,8 @@ Respond in JSON format:
         current_meta: str,
         missing_keywords: List[str],
         top_queries: List[str],
-        max_length: int = 160
+        max_length: int = 160,
+        competitive_context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """Generate meta description variations.
 
@@ -453,6 +508,7 @@ Respond in JSON format:
             missing_keywords: Keywords to incorporate
             top_queries: Top-performing queries for this page
             max_length: Maximum length in characters
+            competitive_context: Optional competitive intelligence dict
 
         Returns:
             List of meta description variations
@@ -460,18 +516,47 @@ Respond in JSON format:
         keywords_str = ', '.join(missing_keywords[:5])
         queries_str = ', '.join(top_queries[:5])
 
-        prompt = f"""Generate 2 optimized meta description variations.
+        # Build competitor meta context if available
+        competitor_meta_section = ""
+        if competitive_context:
+            brief = competitive_context.get("competitive_brief", {})
+            pages = brief.get("competitor_pages", [])
+            entity_analysis = competitive_context.get("entity_analysis", {})
+
+            competitor_metas = [
+                p["meta_description"] for p in pages
+                if p.get("meta_description")
+            ][:4]
+            if competitor_metas:
+                examples = "\n".join(
+                    [f"  - {m}" for m in competitor_metas]
+                )
+                competitor_meta_section += (
+                    f"\nCompetitor meta descriptions (top-ranking pages):\n"
+                    f"{examples}\n"
+                )
+
+            if entity_analysis and entity_analysis.get("entity_gaps"):
+                top_gaps = [
+                    e["name"] for e in entity_analysis["entity_gaps"][:4]
+                ]
+                competitor_meta_section += (
+                    f"Key entities to consider including: "
+                    f"{', '.join(top_gaps)}\n"
+                )
+
+        prompt = f"""Generate 2 optimized meta description variations with competitive context.
 
 Current Meta Description: {current_meta}
 Missing Keywords: {keywords_str}
 Top Queries: {queries_str}
-
+{competitor_meta_section}
 Create 2 compelling meta descriptions that:
 1. Incorporate missing keywords naturally
 2. Include a clear call-to-action
 3. Stay under {max_length} characters
 4. Are compelling and click-worthy
-5. Match search intent
+5. Learn from competitor meta approaches above without copying them
 
 Respond in JSON format:
 [
@@ -510,7 +595,8 @@ Respond in JSON format:
         current_elements: Dict[str, str],
         missing_keywords: List[Dict],
         ranking_data: Dict,
-        page_intent: str = 'informational'
+        page_intent: str = 'informational',
+        competitive_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Generate complete optimization report for a single URL.
 
@@ -520,12 +606,17 @@ Respond in JSON format:
             missing_keywords: List of missing keyword dicts
             ranking_data: Dict with 'position', 'clicks', 'impressions'
             page_intent: Primary intent of the page
+            competitive_context: Optional competitive intelligence dict containing
+                'primary_query', 'competitive_brief', and 'entity_analysis'
 
         Returns:
             Comprehensive optimization report
         """
         # Extract URL topic from current elements
-        url_topic = f"{current_elements.get('title', '')}. {current_elements.get('h1', '')}"
+        url_topic = (
+            f"{current_elements.get('title', '')}. "
+            f"{current_elements.get('h1', '')}"
+        )
 
         # Smart keyword filtering
         page_context = {
@@ -560,6 +651,10 @@ Respond in JSON format:
             }
         }
 
+        # Attach competitive intelligence to report if available
+        if competitive_context:
+            report['competitive_context'] = competitive_context
+
         # Generate title variations if we have recommended keywords
         if recommended_queries:
             report['title_variations'] = self.generate_title_variations(
@@ -567,14 +662,16 @@ Respond in JSON format:
                 missing_keywords=recommended_queries,
                 url=url,
                 n_variations=3,
-                max_length=60
+                max_length=60,
+                competitive_context=competitive_context
             )
 
             # Generate H1 suggestion
             report['h1_suggestion'] = self.generate_h1_suggestion(
                 current_h1=current_elements.get('h1', ''),
                 missing_keywords=recommended_queries,
-                primary_intent=page_intent
+                primary_intent=page_intent,
+                competitive_context=competitive_context
             )
 
             # Generate meta descriptions
@@ -583,9 +680,13 @@ Respond in JSON format:
                 current_meta=current_elements.get('meta_description', ''),
                 missing_keywords=recommended_queries,
                 top_queries=top_queries,
-                max_length=160
+                max_length=160,
+                competitive_context=competitive_context
             )
         else:
-            report['recommendation'] = "No high-priority keyword opportunities found that fit naturally with page content."
+            report['recommendation'] = (
+                "No high-priority keyword opportunities found that fit "
+                "naturally with page content."
+            )
 
         return report
