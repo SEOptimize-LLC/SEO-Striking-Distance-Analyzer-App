@@ -2,6 +2,44 @@ import pandas as pd
 import re
 from typing import Dict, List
 from collections import defaultdict
+from urllib.parse import urlparse, unquote
+
+
+def normalize_url(url: str) -> str:
+    """Normalize URL for consistent matching across data sources.
+
+    Handles: trailing slashes, protocol, www, encoding, case, fragments, default ports.
+    """
+    if not url or not isinstance(url, str):
+        return ''
+
+    url = url.strip()
+
+    # Ensure protocol
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+
+    parsed = urlparse(unquote(url))
+
+    # Lowercase scheme and host
+    scheme = parsed.scheme.lower()
+    host = parsed.hostname.lower() if parsed.hostname else ''
+
+    # Strip www prefix
+    if host.startswith('www.'):
+        host = host[4:]
+
+    # Normalize path: lowercase, strip trailing slash (keep root /)
+    path = parsed.path.rstrip('/') or '/'
+
+    # Drop fragments and default ports
+    return f"{scheme}://{host}{path}"
+
+
+def normalize_scraped_data(scraped_data: Dict[str, str]) -> Dict[str, str]:
+    """Re-key scraped data dict using normalized URLs."""
+    return {normalize_url(url): content for url, content in scraped_data.items()}
+
 
 def analyze_striking_distance(
     meta_df: pd.DataFrame,
@@ -17,10 +55,13 @@ def analyze_striking_distance(
 
     results = []
 
-    # Group organic data by URL
+    # Normalize scraped data keys for consistent lookup
+    scraped_data = normalize_scraped_data(scraped_data)
+
+    # Group organic data by normalized URL
     organic_by_url = defaultdict(list)
     for _, row in organic_df.iterrows():
-        url = row[organic_columns['url']]
+        url = normalize_url(str(row[organic_columns['url']]))
         query = row[organic_columns['query']]
         clicks = row[organic_columns['clicks']]
         impressions = row[organic_columns['impressions']]
@@ -50,7 +91,8 @@ def analyze_striking_distance(
 
     # Process each URL from meta data
     for _, meta_row in meta_df.iterrows():
-        url = meta_row[meta_columns['url']]
+        raw_url = str(meta_row[meta_columns['url']])
+        url = normalize_url(raw_url)
 
         if url not in organic_by_url:
             continue
@@ -58,8 +100,8 @@ def analyze_striking_distance(
         # Get page data
         title = str(meta_row.get(meta_columns.get('title', ''), ''))
         h1 = str(meta_row.get(meta_columns.get('h1', ''), ''))
-        h2 = str(meta_row.get(meta_columns.get('h2', ''), ''))
-        meta_desc = str(meta_row.get(meta_columns.get('meta_description', ''), ''))
+        meta_desc = str(meta_row.get(
+            meta_columns.get('meta_description', ''), ''))
         content = scraped_data.get(url, '')
 
         # Combine all H2s if multiple columns
@@ -104,6 +146,7 @@ def analyze_striking_distance(
             results.append(result)
 
     return pd.DataFrame(results)
+
 
 def check_query_in_text(query: str, text: str) -> bool:
     """Check if query terms are present in text."""

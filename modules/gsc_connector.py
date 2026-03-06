@@ -194,9 +194,9 @@ def get_search_console_data(
     end_date: str,
     dimensions: List[str] = None,
     filters: Optional[List[Dict]] = None,
-    max_rows: int = 25000
+    max_rows: int = 100000
 ) -> pd.DataFrame:
-    """Fetch Search Console data with error handling.
+    """Fetch Search Console data with pagination for large sites.
 
     Args:
         service: Search Console service object
@@ -205,39 +205,44 @@ def get_search_console_data(
         end_date: End date (YYYY-MM-DD)
         dimensions: Query dimensions (default: ['page', 'query'])
         filters: Optional dimension filters
-        max_rows: Maximum rows to fetch (API limit: 25000)
+        max_rows: Maximum total rows to fetch (paginated in 25K chunks)
 
     Returns:
         DataFrame with GSC data
     """
     try:
-        request = {
-            'startDate': start_date,
-            'endDate': end_date,
-            'dimensions': dimensions or ['page', 'query'],
-            'rowLimit': min(max_rows, 25000),  # API limit
-            'startRow': 0
-        }
+        dims = dimensions or ['page', 'query']
+        all_data = []
+        start_row = 0
+        page_size = 25000  # API limit per request
 
-        if filters:
-            request['dimensionFilterGroups'] = [{'filters': filters}]
+        while start_row < max_rows:
+            request = {
+                'startDate': start_date,
+                'endDate': end_date,
+                'dimensions': dims,
+                'rowLimit': min(page_size, max_rows - start_row),
+                'startRow': start_row
+            }
 
-        # Execute request with error handling
-        response = service.searchanalytics().query(
-            siteUrl=site_url,
-            body=request
-        ).execute()
+            if filters:
+                request['dimensionFilterGroups'] = [{'filters': filters}]
 
-        # Convert to DataFrame
-        if 'rows' in response:
-            data = []
-            for row in response['rows']:
+            response = service.searchanalytics().query(
+                siteUrl=site_url,
+                body=request
+            ).execute()
+
+            rows = response.get('rows', [])
+            if not rows:
+                break  # No more data
+
+            for row in rows:
                 row_data = {}
 
                 # Add dimension values
-                if dimensions:
-                    for i, dimension in enumerate(dimensions):
-                        row_data[dimension] = row['keys'][i]
+                for i, dimension in enumerate(dims):
+                    row_data[dimension] = row['keys'][i]
 
                 # Add metrics
                 row_data.update({
@@ -247,9 +252,16 @@ def get_search_console_data(
                     'position': row.get('position', 0)
                 })
 
-                data.append(row_data)
+                all_data.append(row_data)
 
-            return pd.DataFrame(data)
+            # If we got fewer rows than requested, we've reached the end
+            if len(rows) < page_size:
+                break
+
+            start_row += page_size
+
+        if all_data:
+            return pd.DataFrame(all_data)
         else:
             return pd.DataFrame()
 

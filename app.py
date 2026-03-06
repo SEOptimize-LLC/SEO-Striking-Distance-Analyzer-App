@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from modules.data_loader import load_data_file
 from modules.scraper import scrape_urls
-from modules.analyzer import analyze_striking_distance
+from modules.analyzer import analyze_striking_distance, normalize_url
 from modules.dataforseo import DataForSEOClient
 from modules.data_parsers import DataParser
 from modules.ai_analysis import AIAnalyzer
@@ -565,6 +565,10 @@ if using_standard or using_multi_source or using_gsc:
 
             st.success("✅ Data loaded and standardized successfully!")
 
+            # Normalize URLs across all dataframes for consistent matching
+            meta_df[meta_columns['url']] = meta_df[meta_columns['url']].astype(str).apply(normalize_url)
+            organic_df[organic_columns['url']] = organic_df[organic_columns['url']].astype(str).apply(normalize_url)
+
             # Filter out branded terms if specified
             if branded_terms:
                 initial_count = len(organic_df)
@@ -607,6 +611,8 @@ if using_standard or using_multi_source or using_gsc:
 
                     try:
                         scraped_data = scrape_urls(urls_to_scrape)
+                        # Normalize scraper keys to match normalized URLs
+                        scraped_data = {normalize_url(k): v for k, v in scraped_data.items()}
                         successful_scrapes = sum(1 for v in scraped_data.values() if v)
                         st.info(f"✓ Successfully scraped {successful_scrapes}/{len(urls_to_scrape)} URLs")
                     except Exception as e:
@@ -619,10 +625,15 @@ if using_standard or using_multi_source or using_gsc:
                     progress_bar.progress(50)
 
                     try:
+                        # Use GSC tab's min_clicks when in GSC mode (already filtered at fetch)
+                        try:
+                            effective_min_clicks = min_clicks_gsc if using_gsc else min_clicks
+                        except NameError:
+                            effective_min_clicks = min_clicks
                         results = analyze_striking_distance(
                             meta_df, organic_df, scraped_data,
                             meta_columns, organic_columns,
-                            min_clicks, top_queries, use_impressions_weighted
+                            effective_min_clicks, top_queries, use_impressions_weighted
                         )
                     except Exception as e:
                         st.error(f"❌ Analysis error: {str(e)}")
@@ -709,8 +720,8 @@ if using_standard or using_multi_source or using_gsc:
                                 url_keywords = results[results['url'] == url]['query'].tolist()
 
                                 # Extract URL topic from scraped content
-                                scraped_content = scraped_data.get(url, {})
-                                content_snippet = scraped_content.get('content', '')[:500] if scraped_content else ''
+                                scraped_content = scraped_data.get(url, '')
+                                content_snippet = scraped_content[:500] if scraped_content else ''
 
                                 url_topic = analyzer.extract_url_topic(
                                     url=url,
@@ -1122,9 +1133,12 @@ if using_standard or using_multi_source or using_gsc:
                                 url_meta = url_meta_data.iloc[0]
 
                                 # Extract missing keywords (not optimized)
-                                missing_kws = url_results[
-                                    url_results.get('overall_optimized', True) is False
-                                ].to_dict('records')
+                                if 'overall_optimized' in url_results.columns:
+                                    missing_kws = url_results[
+                                        url_results['overall_optimized'] == False
+                                    ].to_dict('records')
+                                else:
+                                    missing_kws = url_results.to_dict('records')
 
                                 if not missing_kws:
                                     st.info(f"✓ {url} - all keywords already optimized!")
